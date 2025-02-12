@@ -2,127 +2,166 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 
-// We define a type for the votedData structure
-type VotedData = {
-  [roleName: string]: {
-    [userEmail: string]: string;
-  };
-};
+// -----------------------------
+// 1) Supabase setup
+// -----------------------------
+const SUPABASE_URL = "https://qegwcetrhbaaplkaeppd.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+  + "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlZ3djZXRyaGJhYXBsa2FlcHBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg3ODY4MTYsImV4cCI6MjA1NDM2MjgxNn0."
+  + "M7CZVaull1RQgKSSAduoY5ZAuR7000L2PUB6Go8a-us";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function VotingDashboard() {
   const router = useRouter();
 
-  // Logged-in user’s email
+  // -----------------------------
+  // 2) State Variables
+  // -----------------------------
+  // The logged-in user’s email (from sessionStorage)
   const [email, setEmail] = useState("");
-  // Current role (e.g. “President”)
+  // The single role we fetched from `elections` (e.g., “President”)
   const [role, setRole] = useState("");
-  // Candidate list
+  // The list of candidate names from `candidates`
   const [candidates, setCandidates] = useState<string[]>([]);
-  // The candidate the user selects
+  // Which candidate the user chooses
   const [selectedCandidate, setSelectedCandidate] = useState("");
-
-  // Tracks whether this user has already voted in the current role
+  // Has the user already voted for the current role?
   const [hasVoted, setHasVoted] = useState(false);
 
-  // 1. Check if user is logged in; if not, redirect
+  // -----------------------------
+  // 3) Check if user is logged in, or redirect
+  // -----------------------------
   useEffect(() => {
     const storedEmail = sessionStorage.getItem("userEmail");
     if (!storedEmail) {
+      // If not logged in, redirect to home page
       router.push("/");
     } else {
       setEmail(storedEmail);
     }
   }, [router]);
 
-  // 2. Load role & candidates from localStorage
-  //    Check if user has voted for that role
+  // -----------------------------
+  // 4) Fetch: 1) the single role from `elections`, 2) all candidates, 3) check if user has voted
+  // -----------------------------
   useEffect(() => {
-    const storedRole = localStorage.getItem("roleName") || "";
-    setRole(storedRole);
-
-    const storedCandidates = localStorage.getItem("candidates");
-    if (storedCandidates) {
-      try {
-        const parsed = JSON.parse(storedCandidates) as string[];
-        setCandidates(parsed);
-      } catch {
-        // ignore parse errors
+    const loadData = async () => {
+      // 4A) Get the single row from `elections` (if any)
+      const { data: electionData, error: electionErr } = await supabase
+        .from("elections")
+        .select("election")
+        .limit(1); // we only want one row
+      if (electionErr) {
+        console.error("Error fetching election:", electionErr);
+      } else if (electionData && electionData.length > 0) {
+        const currentRole = electionData[0].election || "";
+        setRole(currentRole);
+      } else {
+        // If no row, there's no role set
+        setRole("");
       }
-    }
 
-    // Check if the user has already voted for this role
-    const votedDataRaw = localStorage.getItem("votedData");
-    if (votedDataRaw && storedRole) {
-      try {
-        const votedData = JSON.parse(votedDataRaw) as VotedData;
-        const storedEmailLocal = sessionStorage.getItem("userEmail");
-        // e.g. votedData["President"]["alice@example.com"] = "CandidateA"
-        if (
-          storedEmailLocal &&
-          votedData[storedRole] &&
-          votedData[storedRole][storedEmailLocal]
-        ) {
-          setHasVoted(true);
+      // 4B) Get all candidates
+      const { data: candidateData, error: candidateErr } = await supabase
+        .from("candidates")
+        .select("candidate");
+      if (candidateErr) {
+        console.error("Error fetching candidates:", candidateErr);
+      } else if (candidateData) {
+        setCandidates(candidateData.map((row) => row.candidate));
+      }
+
+      // 4C) Check if this user has already voted for the current role
+      //    We'll do a separate fetch here AFTER we know the role
+      //    If role is empty, there's no vote to check
+      if (role) {
+        try {
+          const { data: existingVotes, error: voteErr } = await supabase
+            .from("votes")
+            .select("*")
+            .eq("role", role)
+            .eq("user_email", email);
+
+          if (voteErr) {
+            console.error("Error checking votes:", voteErr);
+          } else if (existingVotes && existingVotes.length > 0) {
+            // They have already voted
+            setHasVoted(true);
+          }
+        } catch (err) {
+          console.error("Error checking if user voted:", err);
         }
-      } catch {
-        // ignore parse errors
       }
-    }
-  }, []);
+    };
 
-  // 3. Handle vote submission
-  const handleVoteSubmit = (e: React.FormEvent) => {
+    loadData();
+  }, [role, email]); // Only re-run if "role" or "email" changes
+
+  // -----------------------------
+  // 5) Submit Vote -> Insert row into `votes` (if not already voted)
+  // -----------------------------
+  const handleVoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // If no role is set, do not allow voting.
     if (!role) {
       alert("No role is set for voting. Please check with the admin!");
       return;
     }
-
     if (!selectedCandidate) {
       alert("Please select a candidate before submitting your vote.");
       return;
     }
 
-    // Mark user as voted in localStorage
-    const votedDataRaw = localStorage.getItem("votedData");
-    let votedData: VotedData = {};
-    if (votedDataRaw) {
-      votedData = JSON.parse(votedDataRaw) as VotedData;
+    // Double-check if user has already voted
+    // (If you add a unique constraint in the DB, that also protects you.)
+    const { data: alreadyVoted, error: checkErr } = await supabase
+      .from("votes")
+      .select("*")
+      .eq("role", role)
+      .eq("user_email", email);
+    if (checkErr) {
+      alert("Error checking votes: " + checkErr.message);
+      return;
     }
-
-    // If there's no sub-object for the current role, create it
-    if (!votedData[role]) {
-      votedData[role] = {};
-    }
-
-    // If somehow they try to double-vote for the same role in one session:
-    if (votedData[role][email]) {
+    if (alreadyVoted && alreadyVoted.length > 0) {
       alert("You have already voted for this role!");
       setHasVoted(true);
       return;
     }
 
-    // Mark this user’s email as having voted for selectedCandidate
-    votedData[role][email] = selectedCandidate;
+    // Insert new row in `votes`
+    const { error: insertErr } = await supabase.from("votes").insert({
+      user_email: email,
+      role,
+      candidate: selectedCandidate,
+    });
 
-    // Save updated object
-    localStorage.setItem("votedData", JSON.stringify(votedData));
+    if (insertErr) {
+      // If you have the unique constraint, you'd catch the duplicate error here
+      alert("Error inserting vote: " + insertErr.message);
+      return;
+    }
 
-    // Set hasVoted to true so we hide the form
+    // Mark user as having voted
     setHasVoted(true);
-
     alert(`You voted for: ${selectedCandidate}`);
   };
 
-  // 4. Logout handler
+  // -----------------------------
+  // 6) Logout
+  // -----------------------------
   const handleLogout = () => {
     sessionStorage.removeItem("userEmail");
     router.push("/");
   };
 
+  // -----------------------------
+  // RENDER
+  // -----------------------------
   return (
     <div className="flex items-center justify-center min-h-screen bg-black p-4">
       <div

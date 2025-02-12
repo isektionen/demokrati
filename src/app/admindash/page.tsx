@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// If you're using these exact credentials, replace them with your actual project details.
+// --- Supabase credentials ---
 const SUPABASE_URL = "https://qegwcetrhbaaplkaeppd.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
@@ -13,116 +13,213 @@ const SUPABASE_ANON_KEY =
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function AdminDashPage() {
-  // Role (election name)
+  // ----------------------------------------------------------------
+  // 1) State: Role (election) from Supabase
+  // ----------------------------------------------------------------
   const [role, setRole] = useState("");
 
-  // Candidates array
+  // ----------------------------------------------------------------
+  // 2) State: Candidates from Supabase
+  // ----------------------------------------------------------------
   const [candidateName, setCandidateName] = useState("");
   const [candidates, setCandidates] = useState<string[]>([]);
 
-  // For displaying vote tallies: { "CandidateA": 2, "CandidateB": 1, ... }
+  // ----------------------------------------------------------------
+  // 3) State: Voting Results (from Supabase `votes` table)
+  // ----------------------------------------------------------------
   const [results, setResults] = useState<{ [candidate: string]: number }>({});
 
-  // Load role & candidates from localStorage on mount
+  // ----------------------------------------------------------------
+  // 4) On mount, load the single `elections` row & candidates
+  // ----------------------------------------------------------------
   useEffect(() => {
-    const storedRole = localStorage.getItem("roleName");
-    if (storedRole) setRole(storedRole);
+    const loadSupabaseData = async () => {
+      // (A) Get all rows in `elections`; ensure we keep only one
+      const { data: electionRows, error: electionErr } = await supabase
+        .from("elections")
+        .select("*");
 
-    const storedCandidates = localStorage.getItem("candidates");
-    if (storedCandidates) {
-      try {
-        setCandidates(JSON.parse(storedCandidates));
-      } catch {
-        // If parse fails, ignore
+      if (electionErr) {
+        console.error("Error fetching elections:", electionErr);
+        return;
       }
-    }
+      if (!electionRows) {
+        console.error("No data returned from `elections` table");
+        return;
+      }
+
+      if (electionRows.length === 0) {
+        // If no rows, insert one empty
+        const { data: inserted, error: insertErr } = await supabase
+          .from("elections")
+          .insert({ election: "" })
+          .select()
+          .single();
+        if (insertErr) {
+          console.error("Error inserting default row:", insertErr);
+          return;
+        }
+        setRole(inserted.election || "");
+      } else {
+        // If there's at least 1 row, keep the first, delete the rest
+        const first = electionRows[0];
+        setRole(first.election || "");
+        if (electionRows.length > 1) {
+          const idsToDelete = electionRows.slice(1).map((r) => r.id);
+          await supabase.from("elections").delete().in("id", idsToDelete);
+        }
+      }
+
+      // (B) Fetch all `candidates`
+      const { data: candidatesData, error: candidatesErr } = await supabase
+        .from("candidates")
+        .select("candidate");
+      if (candidatesErr) {
+        console.error("Error fetching candidates:", candidatesErr);
+      } else if (candidatesData && Array.isArray(candidatesData)) {
+        setCandidates(candidatesData.map((row) => row.candidate));
+      }
+    };
+
+    loadSupabaseData();
   }, []);
 
-  // Save role & candidates whenever they change
-  useEffect(() => {
-    localStorage.setItem("roleName", role);
-  }, [role]);
+  // ----------------------------------------------------------------
+  // 5) Save the single role -> delete all elections -> insert one row
+  // ----------------------------------------------------------------
+  const handleRoleChange = async () => {
+    // Delete all old roles
+    const { error: deleteError } = await supabase
+      .from("elections")
+      .delete()
+      .gt("id", "00000000-0000-0000-0000-000000000000"); 
+      // to satisfy "WHERE" requirement
 
-  useEffect(() => {
-    localStorage.setItem("candidates", JSON.stringify(candidates));
-  }, [candidates]);
+    if (deleteError) {
+      alert("Error clearing old roles: " + deleteError.message);
+      return;
+    }
 
-  // Add a new candidate to the local array
-  const handleAddCandidate = () => {
+    // Insert new row
+    const { data: newRow, error: insertError } = await supabase
+      .from("elections")
+      .insert({ election: role })
+      .select()
+      .single();
+    if (insertError) {
+      alert("Error inserting new role: " + insertError.message);
+      return;
+    }
+
+    setRole(newRow.election || "");
+    alert(`Role saved as "${newRow.election}". Only one row remains in 'elections'.`);
+  };
+
+  // ----------------------------------------------------------------
+  // 6) Add Candidate
+  // ----------------------------------------------------------------
+  const handleAddCandidate = async () => {
     const trimmed = candidateName.trim();
     if (!trimmed) return;
-    setCandidates((prev) => [...prev, trimmed]);
     setCandidateName("");
+
+    const { error } = await supabase
+      .from("candidates")
+      .insert({ candidate: trimmed });
+    if (error) {
+      alert("Error inserting candidate: " + error.message);
+      return;
+    }
+
+    setCandidates((prev) => [...prev, trimmed]);
   };
 
-  // Remove a candidate
-  const handleRemoveCandidate = (name: string) => {
-    setCandidates((prev) => prev.filter((c) => c !== name));
+  // ----------------------------------------------------------------
+  // 7) Remove Candidate
+  // ----------------------------------------------------------------
+  const handleRemoveCandidate = async (cand: string) => {
+    const { error } = await supabase
+      .from("candidates")
+      .delete()
+      .eq("candidate", cand);
+    if (error) {
+      alert("Error removing candidate: " + error.message);
+      return;
+    }
+    setCandidates((prev) => prev.filter((c) => c !== cand));
   };
 
-  // ----- Attendance Reset in Supabase -----
+  // ----------------------------------------------------------------
+  // 8) Reset Attendance
+  // ----------------------------------------------------------------
   const handleResetAttendance = async () => {
     try {
-      // Wipe entire "emails" table
       const { error } = await supabase.from("emails").delete();
       if (error) throw error;
       alert("Attendance table in Supabase has been reset!");
     } catch (err) {
-      // Cast `err` to `Error` so we can use `err.message`
       alert("Failed to reset attendance: " + (err as Error).message);
     }
   };
 
-  // ----- Show Results: read localStorage.votedData -----
-  const handleShowResults = () => {
-    const votedDataRaw = localStorage.getItem("votedData");
-    if (!votedDataRaw) {
-      alert("No votes found yet (no 'votedData' in localStorage).");
+  // ----------------------------------------------------------------
+  // 9) Show Current Results -> read from `votes` table
+  // ----------------------------------------------------------------
+  const handleShowResults = async () => {
+    if (!role) {
+      alert("No role set. Cannot show results.");
       setResults({});
       return;
     }
 
-    try {
-      // The structure might look like:
-      // {
-      //    "President": { "alice@example.com": "CandidateA", "bob@example.com": "CandidateB" },
-      //    "Treasurer": { "alice@example.com": "CandidateC" }
-      // }
-      const votedData = JSON.parse(votedDataRaw);
+    // 9A) Get all votes for the current role
+    const { data: votes, error: voteError } = await supabase
+      .from("votes")
+      .select("candidate")
+      .eq("role", role);
 
-      // Check if we have any votes for the current role
-      if (!role) {
-        alert("No role set. Cannot show results.");
-        return;
-      }
-      if (!votedData[role]) {
-        alert(`No votes found for role: ${role}`);
-        setResults({});
-        return;
-      }
+    if (voteError) {
+      alert("Error fetching votes: " + voteError.message);
+      setResults({});
+      return;
+    }
+    if (!votes || votes.length === 0) {
+      alert(`No votes found for role: ${role}`);
+      setResults({});
+      return;
+    }
 
-      // Tally how many votes each candidate got
-      const roleVotes = votedData[role]; // { "alice@example.com": "CandidateA", "bob@example.com": "CandidateB" }
-      const counts: { [candidate: string]: number } = {};
-      for (const userEmail in roleVotes) {
-        const candidate = roleVotes[userEmail];
-        counts[candidate] = (counts[candidate] || 0) + 1;
-      }
+    // 9B) Tally how many votes each candidate got
+    const tally: { [candidate: string]: number } = {};
+    for (const row of votes) {
+      const cand = row.candidate;
+      tally[cand] = (tally[cand] || 0) + 1;
+    }
 
-      setResults(counts);
-    } catch (err) {
-      console.error(err);
-      alert("Error parsing votedData");
+    setResults(tally);
+  };
+
+  // ----------------------------------------------------------------
+  // 10) Reset ALL Voting Data -> clear the `votes` table
+  // ----------------------------------------------------------------
+  const handleResetVotes = async () => {
+    const { error } = await supabase
+      .from("votes")
+      .delete()
+      .gt("id", "00000000-0000-0000-0000-000000000000"); 
+
+    if (error) {
+      alert("Failed to reset votes: " + error.message);
+    } else {
+      setResults({});
+      alert("All voting data has been reset. Users can now vote again.");
     }
   };
 
-  // ----- Reset ALL voting data for ALL roles -----
-  const handleResetVotes = () => {
-    localStorage.removeItem("votedData");
-    setResults({});
-    alert("All voting data has been reset.");
-  };
 
+  // ----------------------------------------------------------------
+  // RENDER
+  // ----------------------------------------------------------------
   return (
     <div className="min-h-screen bg-black p-4">
       <div className="max-w-4xl mx-auto space-y-4">
@@ -140,12 +237,19 @@ export default function AdminDashPage() {
             value={role}
             onChange={(e) => setRole(e.target.value)}
           />
+          <button
+            onClick={handleRoleChange}
+            className="mt-2 px-4 py-2 rounded font-medium"
+            style={{ backgroundColor: "#996633", color: "#FFD700" }}
+          >
+            Save Role
+          </button>
         </div>
 
         {/* Admin Panel: Add Candidate */}
         <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
           <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
-            Admin Panel
+            Add Candidates
           </h2>
           <div className="flex space-x-2">
             <input
