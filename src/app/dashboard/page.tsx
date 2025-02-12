@@ -3,6 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+// We define a type for the votedData structure
+type VotedData = {
+  [roleName: string]: {
+    [userEmail: string]: string;
+  };
+};
+
 export default function VotingDashboard() {
   const router = useRouter();
 
@@ -48,9 +55,14 @@ export default function VotingDashboard() {
     const votedDataRaw = localStorage.getItem("votedData");
     if (votedDataRaw && storedRole) {
       try {
-        const votedData = JSON.parse(votedDataRaw);
+        const votedData = JSON.parse(votedDataRaw) as VotedData;
+        const storedEmailLocal = sessionStorage.getItem("userEmail");
         // e.g. votedData["President"]["alice@example.com"] = "CandidateA"
-        if (votedData[storedRole] && votedData[storedRole][storedEmail]) {
+        if (
+          storedEmailLocal &&
+          votedData[storedRole] &&
+          votedData[storedRole][storedEmailLocal]
+        ) {
           setHasVoted(true);
         }
       } catch {
@@ -76,9 +88,9 @@ export default function VotingDashboard() {
 
     // Mark user as voted in localStorage
     const votedDataRaw = localStorage.getItem("votedData");
-    let votedData: any = {};
+    let votedData: VotedData = {};
     if (votedDataRaw) {
-      votedData = JSON.parse(votedDataRaw);
+      votedData = JSON.parse(votedDataRaw) as VotedData;
     }
 
     // If there's no sub-object for the current role, create it

@@ -67,8 +67,9 @@ export default function AdminDashPage() {
       const { error } = await supabase.from("emails").delete();
       if (error) throw error;
       alert("Attendance table in Supabase has been reset!");
-    } catch (err: any) {
-      alert("Failed to reset attendance: " + err.message);
+    } catch (err) {
+      // Cast `err` to `Error` so we can use `err.message`
+      alert("Failed to reset attendance: " + (err as Error).message);
     }
   };
 
