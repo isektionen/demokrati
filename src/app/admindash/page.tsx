@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 // --- Supabase credentials ---
@@ -11,8 +12,18 @@ const SUPABASE_ANON_KEY =
   + "M7CZVaull1RQgKSSAduoY5ZAuR7000L2PUB6Go8a-us";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 export default function AdminDashPage() {
+  // ----------------------------------------------------------------
+  // (A) ADD THIS PROTECTION CHECK:
+  // ----------------------------------------------------------------
+  const router = useRouter();
+  useEffect(() => {
+    const isAdmin = sessionStorage.getItem("isAdmin");
+    if (isAdmin !== "true") {
+      // If not logged in as admin, redirect to /admin
+      router.push("/admin");
+    }
+  }, [router]);
   // ----------------------------------------------------------------
   // 1) State: Role (election) from Supabase
   // ----------------------------------------------------------------
