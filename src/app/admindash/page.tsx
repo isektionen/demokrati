@@ -4,27 +4,42 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase client for admin-side operations.
+/**
+ * Supabase client initialization for admin-side operations.
+ * Uses environment variables for the Supabase URL and anon key.
+ */
 const SUPABASE_URL: string = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY: string = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// AdminDashPage: Provides controls to set the election role, manage candidates, and view results.
+/**
+ * AdminDashPage component: 
+ * - Verifies admin privileges.
+ * - Allows setting an election role, adding/removing candidates, and showing/resetting voting results.
+ * - Manages attendance reset.
+ * - Supports logout actions.
+ */
 export default function AdminDashPage() {
   const router = useRouter();
 
-  // New state to store privileges received from admin verification.
+  // State to store privileges received from admin verification.
+  // Possible values: "", "all", "Valberedning", "Results".
   const [privileges, setPrivileges] = useState<"" | "all" | "Valberedning" | "Results">("");
 
-  // Compute modification permission: superadmin ("all") or "Valberedning" can modify.
+  // Determine if the user can modify data. Only superadmin ("all") or "Valberedning" can modify.
   const canModify = privileges === "all" || privileges === "Valberedning";
 
-  // Protection check: verify admin status before showing admin dashboard.
+  /**
+   * useEffect to verify admin status on component mount.
+   * - If not an admin, redirects to /admin (login page).
+   * - Otherwise, sets the privileges state.
+   */
   useEffect(() => {
     const checkAdmin = async () => {
       try {
         const res = await fetch("/api/verify-admin");
         const data = await res.json();
+
         if (!data.isAdmin) {
           router.push("/admin");
         } else {
@@ -35,42 +50,51 @@ export default function AdminDashPage() {
         router.push("/admin");
       }
     };
+
     checkAdmin();
   }, [router]);
 
-  // State variables for election role, candidate list, and voting results.
+  // State variables for election role, candidate name, list of candidates, and voting results.
   const [role, setRole] = useState("");
   const [candidateName, setCandidateName] = useState("");
   const [candidates, setCandidates] = useState<string[]>([]);
   const [results, setResults] = useState<{ [candidate: string]: number }>({});
 
-  // Load election role and candidates on mount
+  /**
+   * useEffect to load the election role and candidates from Supabase on mount.
+   * - Fetches "elections" table; ensures only one row remains.
+   * - Fetches "candidates" table; stores candidate names in state.
+   */
   useEffect(() => {
     const loadSupabaseData = async () => {
-      // Get all rows from the "elections" table
+      // Fetch all rows from the "elections" table
       const { data: electionRows, error: electionErr } = await supabase
         .from("elections")
         .select("*");
+
       if (electionErr || !electionRows) {
         console.error("Error fetching elections:", electionErr);
         return;
       }
+
+      // If no rows exist, insert a default row
       if (electionRows.length === 0) {
-        // Insert a default (empty) row if none exist
         const { data: inserted, error: insertErr } = await supabase
           .from("elections")
           .insert({ election: "" })
           .select()
           .single();
+
         if (insertErr) {
           console.error("Error inserting default row:", insertErr);
           return;
         }
         setRole(inserted.election || "");
       } else {
-        // Keep the first row and delete any extra rows
+        // If multiple rows exist, keep the first and delete the rest
         const first = electionRows[0];
         setRole(first.election || "");
+
         if (electionRows.length > 1) {
           const idsToDelete = electionRows.slice(1).map((r) => r.id);
           await supabase.from("elections").delete().in("id", idsToDelete);
@@ -81,6 +105,7 @@ export default function AdminDashPage() {
       const { data: candidatesData, error: candidatesErr } = await supabase
         .from("candidates")
         .select("candidate");
+
       if (candidatesErr) {
         console.error("Error fetching candidates:", candidatesErr);
       } else if (candidatesData && Array.isArray(candidatesData)) {
@@ -91,88 +116,124 @@ export default function AdminDashPage() {
     loadSupabaseData();
   }, []);
 
-  // Save the election role by deleting old roles and inserting one new row
+  /**
+   * Handle saving the election role to Supabase.
+   * - Deletes old roles.
+   * - Inserts one new row with the current 'role'.
+   */
   const handleRoleChange = async () => {
+    // Delete all rows where id > "00000000-0000-0000-0000-000000000000"
+    // (Ensures only one row remains)
     const { error: deleteError } = await supabase
       .from("elections")
       .delete()
       .gt("id", "00000000-0000-0000-0000-000000000000");
+
     if (deleteError) {
       alert("Error clearing old roles: " + deleteError.message);
       return;
     }
+
+    // Insert the new role
     const { data: newRow, error: insertError } = await supabase
       .from("elections")
       .insert({ election: role })
       .select()
       .single();
+
     if (insertError) {
       alert("Error inserting new role: " + insertError.message);
       return;
     }
+
     setRole(newRow.election || "");
     alert(`Role saved as "${newRow.election}". Only one row remains in 'elections'.`);
   };
 
-  // Add a new candidate to the "candidates" table
+  /**
+   * Handle adding a new candidate to the "candidates" table.
+   * - Trims the input, inserts into the table, updates local state.
+   */
   const handleAddCandidate = async () => {
     const trimmed = candidateName.trim();
     if (!trimmed) return;
+
     setCandidateName("");
     const { error } = await supabase.from("candidates").insert({ candidate: trimmed });
+
     if (error) {
       alert("Error inserting candidate: " + error.message);
       return;
     }
+
     setCandidates((prev) => [...prev, trimmed]);
   };
 
-  // Remove a candidate from the "candidates" table
+  /**
+   * Handle removing a candidate from the "candidates" table.
+   * - Deletes the candidate by name, updates local state.
+   */
   const handleRemoveCandidate = async (cand: string) => {
     const { error } = await supabase.from("candidates").delete().eq("candidate", cand);
+
     if (error) {
       alert("Error removing candidate: " + error.message);
       return;
     }
+
     setCandidates((prev) => prev.filter((c) => c !== cand));
   };
 
-  // Updated handleResetAttendance function
+  /**
+   * Reset the attendance table by deleting all rows in "emails".
+   * - If successful, alerts the user.
+   * - If error, alerts the user with the error message.
+   */
   const handleResetAttendance = async () => {
     try {
       const { error } = await supabase
         .from("emails")
         .delete()
-        .not("id", "is", null); // Added WHERE clause to match all rows
+        .not("id", "is", null); // Match all rows
+
       if (error) throw error;
+
       alert("Attendance table in Supabase has been reset!");
     } catch (err) {
       alert("Failed to reset attendance: " + (err as Error).message);
     }
   };
 
-  // Show voting results by tallying votes from the "votes" table
+  /**
+   * Handle showing current voting results.
+   * - Fetches votes from the "votes" table for the current role.
+   * - Tally votes by candidate, updates results state.
+   */
   const handleShowResults = async () => {
     if (!role) {
       alert("No role set. Cannot show results.");
       setResults({});
       return;
     }
+
     const { data: votes, error: voteError } = await supabase
       .from("votes")
       .select("candidate")
       .eq("role", role);
+
     if (voteError) {
       alert("Error fetching votes: " + voteError.message);
       setResults({});
       return;
     }
+
     if (!votes || votes.length === 0) {
       alert(`No votes found for role: ${role}`);
       setResults({});
       return;
     }
-    // Tally up votes per candidate
+
+    // Tally votes
     const tally: { [candidate: string]: number } = {};
     for (const row of votes) {
       const cand = row.candidate;
@@ -181,42 +242,56 @@ export default function AdminDashPage() {
     setResults(tally);
   };
 
-  // Updated handleResetVotes function to reset voting data instead of attendance:
+  /**
+   * Handle resetting all voting data in the "votes" table.
+   * - Deletes all rows from "votes".
+   * - Alerts the user upon success or error.
+   */
   const handleResetVotes = async () => {
     const { error } = await supabase
       .from("votes")
       .delete()
-      .not("id", "is", null); // Match all rows in votes table
+      .not("id", "is", null); // Match all rows
+
     if (error) {
       alert("Failed to reset voting data: " + error.message);
       return;
     }
+
     alert("Voting data in Supabase has been reset!");
   };
 
-  // New handler to globally logout all admins.
+  /**
+   * Handle global logout of all admins:
+   * - Calls '/api/logout-all' to increment session version (invalidates all admin sessions).
+   * - Calls normal logout for the current user.
+   * - Redirects to /admin.
+   */
   const handleGlobalLogout = async () => {
-    // Call the logout-all endpoint to increment the session version.
     await fetch("/api/logout-all", { method: "POST" });
-    // Optionally, also clear current session by calling normal logout.
     await fetch("/api/logout", { method: "POST" });
-    router.push("/admin"); // Redirect back to the admin login page.
+    router.push("/admin");
   };
 
-  // New handler for a universal logout
+  /**
+   * Handle logout for the current admin:
+   * - Calls '/api/logout'.
+   * - Redirects to /admin.
+   */
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
     router.push("/admin");
   };
 
-  // RENDER: Display admin controls for setting role, managing candidates, and viewing/resetting voting data.
+  // Render the admin dashboard UI
   return (
     <>
       <div className="min-h-screen bg-black p-4">
         <div className="max-w-4xl mx-auto space-y-4">
+          {/* Section for setting the election role */}
           <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
             <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
-              What are we voting for?
+              What post are we electing?
             </h2>
             <input
               type="text"
@@ -233,14 +308,15 @@ export default function AdminDashPage() {
               style={{ backgroundColor: "#996633", color: "#FFD700" }}
               disabled={privileges === "Results"}
             >
-              Save Role
+              Change Post
             </button>
           </div>
 
+          {/* Section for adding candidates (only visible if canModify) */}
           {canModify && (
             <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
               <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
-                Add Candidates
+                Current Candidates
               </h2>
               <div className="flex space-x-2">
                 <input
@@ -264,7 +340,7 @@ export default function AdminDashPage() {
             </div>
           )}
 
-          {/* Candidate list and remove functionality; remove button should be hidden for Results */}
+          {/* List of current candidates, with remove functionality if canModify */}
           <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
             <h3 className="text-xl font-semibold mb-2" style={{ color: "#FFD700" }}>
               Current Candidates:
@@ -291,6 +367,7 @@ export default function AdminDashPage() {
             )}
           </div>
 
+          {/* Section for viewing voting results and resetting votes if canModify */}
           <div className="rounded p-4 space-y-4" style={{ backgroundColor: "#2b2b2b" }}>
             <h3 className="text-xl font-semibold" style={{ color: "#FFD700" }}>
               Voting Results
@@ -300,9 +377,8 @@ export default function AdminDashPage() {
               className="w-full py-2 rounded font-medium mb-2"
               style={{ backgroundColor: "#996633", color: "#FFD700" }}
             >
-              Show Current Results
+              Show Voting Results
             </button>
-            {/* ...existing results display... */}
             {Object.keys(results).length > 0 ? (
               <ul>
                 {Object.entries(results).map(([candidate, count]) => (
@@ -312,8 +388,7 @@ export default function AdminDashPage() {
                 ))}
               </ul>
             ) : (
-              <p className="italic" style={{ color: "#FFF176" }}>
-              </p>
+              <p className="italic" style={{ color: "#FFF176" }}></p>
             )}
             {canModify && (
               <button
@@ -327,21 +402,33 @@ export default function AdminDashPage() {
             )}
           </div>
 
+          {/* Section for managing attendance and handling logout actions */}
           <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
             <h3 className="text-xl font-semibold mb-4" style={{ color: "#FFD700" }}>
               Manage Attendance
             </h3>
             {canModify && (
-              <button
-                onClick={handleResetAttendance}
-                className="px-4 py-2 rounded font-medium"
-                style={{ backgroundColor: "#F44336", color: "#FFF" }}
-                disabled={privileges === "Results"}
-              >
-                Reset Attendance Table
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleResetAttendance}
+                  className="flex-1 px-4 py-2 rounded font-medium"
+                  style={{ backgroundColor: "#F44336", color: "#FFF" }}
+                  disabled={privileges === "Results"}
+                >
+                  Reset Attendance
+                </button>
+                {privileges === "all" && (
+                  <button
+                    onClick={handleGlobalLogout}
+                    className="flex-1 px-4 py-2 rounded font-medium"
+                    style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
+                  >
+                    Logout All Admins
+                  </button>
+                )}
+              </div>
             )}
-            {/* Common logout button visible to everyone */}
+            
             <button
               onClick={handleLogout}
               className="w-full py-2 rounded font-medium mt-4"
@@ -349,16 +436,6 @@ export default function AdminDashPage() {
             >
               Logout
             </button>
-            {/* Superadmin-only logout all admins button */}
-            {privileges === "all" && (
-              <button
-                onClick={handleGlobalLogout}
-                className="w-full py-2 rounded font-medium mt-2"
-                style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
-              >
-                Logout All Admins
-              </button>
-            )}
           </div>
         </div>
       </div>
