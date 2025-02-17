@@ -123,10 +123,13 @@ export default function AdminDashPage() {
     setCandidates((prev) => prev.filter((c) => c !== cand));
   };
 
-  // Reset attendance data in the "emails" table
+  // Updated handleResetAttendance function
   const handleResetAttendance = async () => {
     try {
-      const { error } = await supabase.from("emails").delete();
+      const { error } = await supabase
+        .from("emails")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
       if (error) throw error;
       alert("Attendance table in Supabase has been reset!");
     } catch (err) {
@@ -166,16 +169,12 @@ export default function AdminDashPage() {
 
   // Reset all votes by clearing the "votes" table
   const handleResetVotes = async () => {
-    const { error } = await supabase
-      .from("votes")
-      .delete()
-      .gt("id", "00000000-0000-0000-0000-000000000000");
+    const { error } = await supabase.from("emails").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     if (error) {
-      alert("Failed to reset votes: " + error.message);
-    } else {
-      setResults({});
-      alert("All voting data has been reset. Users can now vote again.");
+      alert("Failed to reset attendance: " + error.message);
+      return;
     }
+    alert("Attendance table in Supabase has been reset!");
   };
 
   // New handler to globally logout all admins.

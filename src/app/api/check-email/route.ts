@@ -9,14 +9,17 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // POST handler to verify if an email exists in the "emails" table
 export async function POST(request: Request) {
   try {
-    // Parse incoming JSON with an email property
-    const { email } = await request.json();
+    // Parse incoming JSON with email and pincode properties
+    const { email, pincode } = await request.json();
 
-    // Query the "emails" table for the provided email
+    // Combine email and pincode with ";" as the separator
+    const combined = `${email};${pincode}`;
+
+    // Query the "emails" table for a record matching the combined credentials stored in the email column
     const { data, error } = await supabase
       .from("emails")
       .select("*")
-      .eq("email", email);
+      .eq("email", combined);
 
     if (error) {
       console.error("Supabase error:", error);
@@ -26,7 +29,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // If email exists, set a secure "userEmail" cookie
+    // If a matching record exists, set a secure "userEmail" cookie
     if (data && data.length > 0) {
       const response = NextResponse.json({ valid: true }, { status: 200 });
       response.cookies.set("userEmail", email, {
@@ -37,7 +40,7 @@ export async function POST(request: Request) {
       return response;
     } else {
       return NextResponse.json(
-        { valid: false, error: "Email not found in the list." },
+        { valid: false, error: "Invalid email or pincode." },
         { status: 404 }
       );
     }
