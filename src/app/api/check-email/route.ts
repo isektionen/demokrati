@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import path from "path";
-import { promises as fs } from "fs";
+// import path from "path";
+// import { promises as fs } from "fs";
 
 // Initialize Supabase client specific for this API
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;

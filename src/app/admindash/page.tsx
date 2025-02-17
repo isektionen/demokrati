@@ -13,26 +13,31 @@ const SUPABASE_ANON_KEY: string = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
- * AdminDashPage component: 
+ * AdminDashPage component:
  * - Verifies admin privileges.
  * - Allows setting an election role, adding/removing candidates, and showing/resetting voting results.
  * - Manages attendance reset.
  * - Supports logout actions.
+ *
+ * Possible privilege values: "", "all", "valberedning", "results"
+ * - "all"        => super admin can do everything
+ * - "valberedning" => can modify data but not do "all" actions
+ * - "results"    => can only view results (cannot modify)
+ * - ""           => no privileges
  */
 export default function AdminDashPage() {
   const router = useRouter();
 
-  // State to store privileges received from admin verification.
-  // Possible values: "", "all", "Valberedning", "Results".
-  const [privileges, setPrivileges] = useState<"" | "all" | "Valberedning" | "Results">("");
+  // State to store privileges from admin verification: "", "all", "valberedning", or "results".
+  const [privileges, setPrivileges] = useState<"" | "all" | "valberedning" | "results">("");
 
-  // Determine if the user can modify data. Only superadmin ("all") or "Valberedning" can modify.
-  const canModify = privileges === "all" || privileges === "Valberedning";
+  // Determine if the user can modify data. Only "all" or "valberedning" can modify.
+  const canModify = privileges === "all" || privileges === "valberedning";
 
   /**
    * useEffect to verify admin status on component mount.
-   * - If not an admin, redirects to /admin (login page).
-   * - Otherwise, sets the privileges state.
+   * - If not an admin, redirect to /admin (login page).
+   * - Otherwise, store the privileges in state.
    */
   useEffect(() => {
     const checkAdmin = async () => {
@@ -43,6 +48,7 @@ export default function AdminDashPage() {
         if (!data.isAdmin) {
           router.push("/admin");
         } else {
+          // The server should return either "", "all", "valberedning", or "results"
           setPrivileges(data.privileges || "");
         }
       } catch (err) {
@@ -61,9 +67,7 @@ export default function AdminDashPage() {
   const [results, setResults] = useState<{ [candidate: string]: number }>({});
 
   /**
-   * useEffect to load the election role and candidates from Supabase on mount.
-   * - Fetches "elections" table; ensures only one row remains.
-   * - Fetches "candidates" table; stores candidate names in state.
+   * On mount, load the election role and candidates from Supabase.
    */
   useEffect(() => {
     const loadSupabaseData = async () => {
@@ -118,12 +122,9 @@ export default function AdminDashPage() {
 
   /**
    * Handle saving the election role to Supabase.
-   * - Deletes old roles.
-   * - Inserts one new row with the current 'role'.
    */
   const handleRoleChange = async () => {
     // Delete all rows where id > "00000000-0000-0000-0000-000000000000"
-    // (Ensures only one row remains)
     const { error: deleteError } = await supabase
       .from("elections")
       .delete()
@@ -151,8 +152,7 @@ export default function AdminDashPage() {
   };
 
   /**
-   * Handle adding a new candidate to the "candidates" table.
-   * - Trims the input, inserts into the table, updates local state.
+   * Handle adding a new candidate.
    */
   const handleAddCandidate = async () => {
     const trimmed = candidateName.trim();
@@ -170,8 +170,7 @@ export default function AdminDashPage() {
   };
 
   /**
-   * Handle removing a candidate from the "candidates" table.
-   * - Deletes the candidate by name, updates local state.
+   * Handle removing a candidate.
    */
   const handleRemoveCandidate = async (cand: string) => {
     const { error } = await supabase.from("candidates").delete().eq("candidate", cand);
@@ -186,8 +185,6 @@ export default function AdminDashPage() {
 
   /**
    * Reset the attendance table by deleting all rows in "emails".
-   * - If successful, alerts the user.
-   * - If error, alerts the user with the error message.
    */
   const handleResetAttendance = async () => {
     try {
@@ -200,14 +197,16 @@ export default function AdminDashPage() {
 
       alert("Attendance table in Supabase has been reset!");
     } catch (err) {
-      alert("Failed to reset attendance: " + (err as Error).message);
+      if (err instanceof Error) {
+        alert("Failed to reset attendance: " + err.message);
+      } else {
+        alert("Failed to reset attendance (unknown error).");
+      }
     }
   };
 
   /**
-   * Handle showing current voting results.
-   * - Fetches votes from the "votes" table for the current role.
-   * - Tally votes by candidate, updates results state.
+   * Handle showing current voting results for the chosen role.
    */
   const handleShowResults = async () => {
     if (!role) {
@@ -244,8 +243,6 @@ export default function AdminDashPage() {
 
   /**
    * Handle resetting all voting data in the "votes" table.
-   * - Deletes all rows from "votes".
-   * - Alerts the user upon success or error.
    */
   const handleResetVotes = async () => {
     const { error } = await supabase
@@ -262,10 +259,7 @@ export default function AdminDashPage() {
   };
 
   /**
-   * Handle global logout of all admins:
-   * - Calls '/api/logout-all' to increment session version (invalidates all admin sessions).
-   * - Calls normal logout for the current user.
-   * - Redirects to /admin.
+   * Handle global logout of all admins.
    */
   const handleGlobalLogout = async () => {
     await fetch("/api/logout-all", { method: "POST" });
@@ -274,9 +268,7 @@ export default function AdminDashPage() {
   };
 
   /**
-   * Handle logout for the current admin:
-   * - Calls '/api/logout'.
-   * - Redirects to /admin.
+   * Handle logout for the current admin.
    */
   const handleLogout = async () => {
     await fetch("/api/logout", { method: "POST" });
@@ -286,149 +278,66 @@ export default function AdminDashPage() {
   // Render the admin dashboard UI
   return (
     <>
-      <div className="min-h-screen bg-black p-4">
-        <div className="max-w-4xl mx-auto space-y-4">
-          {/* Section for setting the election role */}
-          <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
-            <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
-              What post are we electing?
-            </h2>
-            <input
-              type="text"
-              placeholder="e.g. President"
-              className="w-full p-2 rounded border"
-              style={{ backgroundColor: "#FFF176", borderColor: "#996633", color: "#000" }}
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              disabled={privileges === "Results"}
-            />
-            <button
-              onClick={handleRoleChange}
-              className="mt-2 px-4 py-2 rounded font-medium"
-              style={{ backgroundColor: "#996633", color: "#FFD700" }}
-              disabled={privileges === "Results"}
-            >
-              Change Post
-            </button>
-          </div>
-
-          {/* Section for adding candidates (only visible if canModify) */}
-          {canModify && (
+      {privileges === "results" ? (
+        // Minimal UI for "results" privilege with readonly election role & candidates view
+        <div className="min-h-screen bg-black p-4">
+          <div className="max-w-4xl mx-auto space-y-4">
+            {/* Readonly view of election role */}
             <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
               <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
-                Current Candidates
+                What post are we electing?
               </h2>
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  placeholder="Candidate name"
-                  className="flex-1 p-2 rounded border"
-                  style={{ backgroundColor: "#FFF176", borderColor: "#996633", color: "#000" }}
-                  value={candidateName}
-                  onChange={(e) => setCandidateName(e.target.value)}
-                  disabled={privileges === "Results"}
-                />
-                <button
-                  onClick={handleAddCandidate}
-                  className="px-4 py-2 rounded font-medium"
-                  style={{ backgroundColor: "#996633", color: "#FFD700" }}
-                  disabled={privileges === "Results"}
-                >
-                  Add Candidate
-                </button>
+              <div 
+                className="w-full p-2 rounded border" 
+                style={{ backgroundColor: "#FFF176", borderColor: "#996633", color: "#000" }}
+              >
+                {role || "No post set."}
               </div>
             </div>
-          )}
-
-          {/* List of current candidates, with remove functionality if canModify */}
-          <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
-            <h3 className="text-xl font-semibold mb-2" style={{ color: "#FFD700" }}>
-              Current Candidates:
-            </h3>
-            {candidates.length > 0 ? (
-              <ul className="space-y-2">
-                {candidates.map((cand) => (
-                  <li key={cand} className="flex justify-between items-center">
-                    <span style={{ color: "#FFF176" }}>{cand}</span>
-                    {canModify && (
-                      <button
-                        onClick={() => handleRemoveCandidate(cand)}
-                        className="px-3 py-1 rounded"
-                        style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p style={{ color: "#FFF176" }}>No candidates yet.</p>
-            )}
-          </div>
-
-          {/* Section for viewing voting results and resetting votes if canModify */}
-          <div className="rounded p-4 space-y-4" style={{ backgroundColor: "#2b2b2b" }}>
-            <h3 className="text-xl font-semibold" style={{ color: "#FFD700" }}>
-              Voting Results
-            </h3>
-            <button
-              onClick={handleShowResults}
-              className="w-full py-2 rounded font-medium mb-2"
-              style={{ backgroundColor: "#996633", color: "#FFD700" }}
-            >
-              Show Voting Results
-            </button>
-            {Object.keys(results).length > 0 ? (
-              <ul>
-                {Object.entries(results).map(([candidate, count]) => (
-                  <li key={candidate} style={{ color: "#FFF176" }}>
-                    {candidate}: {count} vote{count > 1 ? "s" : ""}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="italic" style={{ color: "#FFF176" }}></p>
-            )}
-            {canModify && (
+            {/* Readonly candidate list view */}
+            <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
+              <h3 className="text-xl font-semibold mb-2" style={{ color: "#FFD700" }}>
+                Current Candidates:
+              </h3>
+              {candidates.length > 0 ? (
+                <ul className="space-y-2">
+                  {candidates.map((cand) => (
+                    <li key={cand} style={{ color: "#FFF176" }}>
+                      {cand}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ color: "#FFF176" }}>No candidates yet.</p>
+              )}
+            </div>
+            {/* Voting Results Section */}
+            <div className="rounded p-4 space-y-4" style={{ backgroundColor: "#2b2b2b" }}>
+              <h3 className="text-xl font-semibold" style={{ color: "#FFD700" }}>
+                Voting Results
+              </h3>
               <button
-                onClick={handleResetVotes}
-                className="w-full py-2 rounded font-medium"
-                style={{ backgroundColor: "#F44336", color: "#FFF" }}
-                disabled={privileges === "Results"}
+                onClick={handleShowResults}
+                className="w-full py-2 rounded font-medium mb-2"
+                style={{ backgroundColor: "#996633", color: "#FFD700" }}
               >
-                Reset All Voting Data
+                Show Voting Results
               </button>
-            )}
-          </div>
-
-          {/* Section for managing attendance and handling logout actions */}
-          <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
-            <h3 className="text-xl font-semibold mb-4" style={{ color: "#FFD700" }}>
-              Manage Attendance
-            </h3>
-            {canModify && (
-              <div className="flex gap-2">
-                <button
-                  onClick={handleResetAttendance}
-                  className="flex-1 px-4 py-2 rounded font-medium"
-                  style={{ backgroundColor: "#F44336", color: "#FFF" }}
-                  disabled={privileges === "Results"}
-                >
-                  Reset Attendance
-                </button>
-                {privileges === "all" && (
-                  <button
-                    onClick={handleGlobalLogout}
-                    className="flex-1 px-4 py-2 rounded font-medium"
-                    style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
-                  >
-                    Logout All Admins
-                  </button>
-                )}
-              </div>
-            )}
-            
+              {Object.keys(results).length > 0 ? (
+                <ul>
+                  {Object.entries(results).map(([candidate, count]) => (
+                    <li key={candidate} style={{ color: "#FFF176" }}>
+                      {candidate}: {count} vote{count > 1 ? "s" : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="italic" style={{ color: "#FFF176" }}>
+                  No results to display.
+                </p>
+              )}
+            </div>
+            {/* Logout Section */}
             <button
               onClick={handleLogout}
               className="w-full py-2 rounded font-medium mt-4"
@@ -438,7 +347,159 @@ export default function AdminDashPage() {
             </button>
           </div>
         </div>
-      </div>
+      ) : (
+        // Full admin dashboard for "all" and "valberedning"
+        <div className="min-h-screen bg-black p-4">
+          <div className="max-w-4xl mx-auto space-y-4">
+            {/* Election role section */}
+            <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
+              <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
+                What post are we electing?
+              </h2>
+              <input
+                type="text"
+                placeholder="e.g. President"
+                className="w-full p-2 rounded border"
+                style={{ backgroundColor: "#FFF176", borderColor: "#996633", color: "#000" }}
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+              />
+              <button
+                onClick={handleRoleChange}
+                className="mt-2 px-4 py-2 rounded font-medium"
+                style={{ backgroundColor: "#996633", color: "#FFD700" }}
+              >
+                Change Post
+              </button>
+            </div>
+  
+            {/* Candidate management section (only for modify privileges) */}
+            {canModify && (
+              <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
+                <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
+                  Current Candidates
+                </h2>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    placeholder="Candidate name"
+                    className="flex-1 p-2 rounded border"
+                    style={{ backgroundColor: "#FFF176", borderColor: "#996633", color: "#000" }}
+                    value={candidateName}
+                    onChange={(e) => setCandidateName(e.target.value)}
+                  />
+                  <button
+                    onClick={handleAddCandidate}
+                    className="px-4 py-2 rounded font-medium"
+                    style={{ backgroundColor: "#996633", color: "#FFD700" }}
+                  >
+                    Add Candidate
+                  </button>
+                </div>
+              </div>
+            )}
+  
+            {/* Candidate list section */}
+            {canModify && (
+              <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
+                <h3 className="text-xl font-semibold mb-2" style={{ color: "#FFD700" }}>
+                  Current Candidates:
+                </h3>
+                {candidates.length > 0 ? (
+                  <ul className="space-y-2">
+                    {candidates.map((cand) => (
+                      <li key={cand} className="flex justify-between items-center">
+                        <span style={{ color: "#FFF176" }}>{cand}</span>
+                        <button
+                          onClick={() => handleRemoveCandidate(cand)}
+                          className="px-3 py-1 rounded"
+                          style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={{ color: "#FFF176" }}>No candidates yet.</p>
+                )}
+              </div>
+            )}
+  
+            {/* Voting results section */}
+            <div className="rounded p-4 space-y-4" style={{ backgroundColor: "#2b2b2b" }}>
+              <h3 className="text-xl font-semibold" style={{ color: "#FFD700" }}>
+                Voting Results
+              </h3>
+              <button
+                onClick={handleShowResults}
+                className="w-full py-2 rounded font-medium mb-2"
+                style={{ backgroundColor: "#996633", color: "#FFD700" }}
+              >
+                Show Voting Results
+              </button>
+              {canModify && (
+                <button
+                  onClick={handleResetVotes}
+                  className="w-full py-2 rounded font-medium mb-2"
+                  style={{ backgroundColor: "#F44336", color: "#FFF" }}
+                >
+                  Reset Voting Results
+                </button>
+              )}
+              {Object.keys(results).length > 0 ? (
+                <ul>
+                  {Object.entries(results).map(([candidate, count]) => (
+                    <li key={candidate} style={{ color: "#FFF176" }}>
+                      {candidate}: {count} vote{count > 1 ? "s" : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="italic" style={{ color: "#FFF176" }}>
+                  No results to display.
+                </p>
+              )}
+            </div>
+  
+            {/* Attendance management section */}
+            {canModify && (
+              <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
+                <h3 className="text-xl font-semibold mb-4" style={{ color: "#FFD700" }}>
+                  Manage Attendance
+                </h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleResetAttendance}
+                    className="flex-1 px-4 py-2 rounded font-medium"
+                    style={{ backgroundColor: "#F44336", color: "#FFF" }}
+                  >
+                    Reset Attendance
+                  </button>
+                  {privileges === "all" && (
+                    <button
+                      onClick={handleGlobalLogout}
+                      className="flex-1 px-4 py-2 rounded font-medium"
+                      style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
+                    >
+                      Logout All Admins
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+  
+            {/* Logout button (common for full dashboard) */}
+            <button
+              onClick={handleLogout}
+              className="w-full py-2 rounded font-medium mt-4"
+              style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
