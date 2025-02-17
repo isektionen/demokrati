@@ -181,17 +181,17 @@ export default function AdminDashPage() {
     setResults(tally);
   };
 
-  // Updated handleResetVotes function, if intended to delete from "emails"
+  // Updated handleResetVotes function to reset voting data instead of attendance:
   const handleResetVotes = async () => {
     const { error } = await supabase
-      .from("emails")
+      .from("votes")
       .delete()
-      .not("id", "is", null); // Added WHERE clause to match all rows
+      .not("id", "is", null); // Match all rows in votes table
     if (error) {
-      alert("Failed to reset attendance: " + error.message);
+      alert("Failed to reset voting data: " + error.message);
       return;
     }
-    alert("Attendance table in Supabase has been reset!");
+    alert("Voting data in Supabase has been reset!");
   };
 
   // New handler to globally logout all admins.
@@ -214,52 +214,28 @@ export default function AdminDashPage() {
     <>
       <div className="min-h-screen bg-black p-4">
         <div className="max-w-4xl mx-auto space-y-4">
-          {/* Global Logout button: superadmin ("all") can logout all */}
-          {privileges === "all" && (
+          <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
+            <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
+              What are we voting for?
+            </h2>
+            <input
+              type="text"
+              placeholder="e.g. President"
+              className="w-full p-2 rounded border"
+              style={{ backgroundColor: "#FFF176", borderColor: "#996633", color: "#000" }}
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              disabled={privileges === "Results"}
+            />
             <button
-              onClick={handleGlobalLogout}
-              className="w-full py-2 rounded font-medium mb-4"
-              style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
+              onClick={handleRoleChange}
+              className="mt-2 px-4 py-2 rounded font-medium"
+              style={{ backgroundColor: "#996633", color: "#FFD700" }}
+              disabled={privileges === "Results"}
             >
-              Logout All Admins
+              Save Role
             </button>
-          )}
-
-          {/* Removed original universal logout button */}
-          {/*
-          <button
-            onClick={handleLogout}
-            className="w-full py-2 rounded font-medium mb-4"
-            style={{ backgroundColor: "#424242", color: "#FFF" }}
-          >
-            Logout
-          </button>
-          */}
-
-          {canModify && (
-            <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
-              <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
-                What are we voting for?
-              </h2>
-              <input
-                type="text"
-                placeholder="e.g. President"
-                className="w-full p-2 rounded border"
-                style={{ backgroundColor: "#FFF176", borderColor: "#996633", color: "#000" }}
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                disabled={privileges === "Results"}
-              />
-              <button
-                onClick={handleRoleChange}
-                className="mt-2 px-4 py-2 rounded font-medium"
-                style={{ backgroundColor: "#996633", color: "#FFD700" }}
-                disabled={privileges === "Results"}
-              >
-                Save Role
-              </button>
-            </div>
-          )}
+          </div>
 
           {canModify && (
             <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
@@ -337,7 +313,6 @@ export default function AdminDashPage() {
               </ul>
             ) : (
               <p className="italic" style={{ color: "#FFF176" }}>
-                No votes yet (or no results to show).
               </p>
             )}
             {canModify && (
@@ -366,29 +341,26 @@ export default function AdminDashPage() {
                 Reset Attendance Table
               </button>
             )}
+            {/* Common logout button visible to everyone */}
+            <button
+              onClick={handleLogout}
+              className="w-full py-2 rounded font-medium mt-4"
+              style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
+            >
+              Logout
+            </button>
+            {/* Superadmin-only logout all admins button */}
+            {privileges === "all" && (
+              <button
+                onClick={handleGlobalLogout}
+                className="w-full py-2 rounded font-medium mt-2"
+                style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
+              >
+                Logout All Admins
+              </button>
+            )}
           </div>
         </div>
-      </div>
-
-      {/* New Logout button fixed at the bottom for all credentials */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: "10px",
-          backgroundColor: "#2b2b2b",
-          textAlign: "center"
-        }}
-      >
-        <button
-          onClick={handleLogout}
-          className="w-full py-2 rounded font-medium"
-          style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
-        >
-          Logout
-        </button>
       </div>
     </>
   );
