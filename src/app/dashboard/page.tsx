@@ -144,11 +144,11 @@ export default function VotingDashboard() {
     <div className="flex items-center justify-center min-h-screen bg-black p-4">
       <div className="w-full max-w-sm rounded-lg p-6" style={{ backgroundColor: "#2b2b2b" }}>
         <h1 className="text-3xl font-bold text-center mb-6" style={{ color: "#FFD700" }}>
-          demokrat-I
+          Demokrat-I
         </h1>
         {role ? (
           <p className="mb-4" style={{ color: "#FFF176" }}>
-            <strong>We are currently voting for:</strong> {role}
+            <strong>We are currently voting for: </strong> {role}
           </p>
         ) : (
           <p className="mb-4" style={{ color: "#FFF176" }}>
