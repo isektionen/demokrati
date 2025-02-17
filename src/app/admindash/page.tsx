@@ -163,16 +163,17 @@ export default function AdminDashPage() {
   // ----------------------------------------------------------------
   // 8) Reset Attendance
   // ----------------------------------------------------------------
-  const handleResetAttendance = async () => {
-    try {
-      const { error } = await supabase.from("emails").delete();
-      if (error) throw error;
-      alert("Attendance table in Supabase has been reset!");
-    } catch (err) {
-      alert("Failed to reset attendance: " + (err as Error).message);
-    }
-  };
 
+  const handleResetAttendance = async () => {
+    const { error } = await supabase.from("emails").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error) {
+      alert("Failed to reset attendance: " + error.message);
+      return;
+    }
+    alert("Attendance table in Supabase has been reset!");
+  };
+  
+  
   // ----------------------------------------------------------------
   // 9) Show Current Results -> read from `votes` table
   // ----------------------------------------------------------------
