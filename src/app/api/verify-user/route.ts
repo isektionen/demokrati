@@ -1,5 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 
+// GET handler verifies if a valid user cookie exists.
+// If yes, returns the email; otherwise, returns an error status.
 export async function GET(request: NextRequest) {
   const userEmail = request.cookies.get("userEmail")?.value;
   if (userEmail) {
@@ -9,5 +11,5 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Ensure this file is treated as a module
+// Ensure the file is a module
 export {};

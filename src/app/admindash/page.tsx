@@ -4,17 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
-// Retrieve Supabase credentials from environment variables
+// Initialize Supabase client for admin-side operations.
 const SUPABASE_URL: string = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY: string = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-
+// AdminDashPage: Provides controls to set the election role, manage candidates, and view results.
 export default function AdminDashPage() {
-  // ----------------------------------------------------------------
-  // (A) ADD THIS PROTECTION CHECK:
-  // ----------------------------------------------------------------
   const router = useRouter();
+
+  // Protection check: verify admin status before showing admin dashboard.
   useEffect(() => {
     const checkAdmin = async () => {
       const res = await fetch("/api/verify-admin");
@@ -24,43 +23,26 @@ export default function AdminDashPage() {
     };
     checkAdmin();
   }, [router]);
-  // ----------------------------------------------------------------
-  // 1) State: Role (election) from Supabase
-  // ----------------------------------------------------------------
-  const [role, setRole] = useState("");
 
-  // ----------------------------------------------------------------
-  // 2) State: Candidates from Supabase
-  // ----------------------------------------------------------------
+  // State variables for election role, candidate list, and voting results.
+  const [role, setRole] = useState("");
   const [candidateName, setCandidateName] = useState("");
   const [candidates, setCandidates] = useState<string[]>([]);
-
-  // ----------------------------------------------------------------
-  // 3) State: Voting Results (from Supabase `votes` table)
-  // ----------------------------------------------------------------
   const [results, setResults] = useState<{ [candidate: string]: number }>({});
 
-  // ----------------------------------------------------------------
-  // 4) On mount, load the single `elections` row & candidates
-  // ----------------------------------------------------------------
+  // Load election role and candidates on mount
   useEffect(() => {
     const loadSupabaseData = async () => {
-      // (A) Get all rows in `elections`; ensure we keep only one
+      // Get all rows from the "elections" table
       const { data: electionRows, error: electionErr } = await supabase
         .from("elections")
         .select("*");
-
-      if (electionErr) {
+      if (electionErr || !electionRows) {
         console.error("Error fetching elections:", electionErr);
         return;
       }
-      if (!electionRows) {
-        console.error("No data returned from `elections` table");
-        return;
-      }
-
       if (electionRows.length === 0) {
-        // If no rows, insert one empty
+        // Insert a default (empty) row if none exist
         const { data: inserted, error: insertErr } = await supabase
           .from("elections")
           .insert({ election: "" })
@@ -72,7 +54,7 @@ export default function AdminDashPage() {
         }
         setRole(inserted.election || "");
       } else {
-        // If there's at least 1 row, keep the first, delete the rest
+        // Keep the first row and delete any extra rows
         const first = electionRows[0];
         setRole(first.election || "");
         if (electionRows.length > 1) {
@@ -81,7 +63,7 @@ export default function AdminDashPage() {
         }
       }
 
-      // (B) Fetch all `candidates`
+      // Fetch all candidates from the "candidates" table
       const { data: candidatesData, error: candidatesErr } = await supabase
         .from("candidates")
         .select("candidate");
@@ -95,23 +77,16 @@ export default function AdminDashPage() {
     loadSupabaseData();
   }, []);
 
-  // ----------------------------------------------------------------
-  // 5) Save the single role -> delete all elections -> insert one row
-  // ----------------------------------------------------------------
+  // Save the election role by deleting old roles and inserting one new row
   const handleRoleChange = async () => {
-    // Delete all old roles
     const { error: deleteError } = await supabase
       .from("elections")
       .delete()
-      .gt("id", "00000000-0000-0000-0000-000000000000"); 
-      // to satisfy "WHERE" requirement
-
+      .gt("id", "00000000-0000-0000-0000-000000000000");
     if (deleteError) {
       alert("Error clearing old roles: " + deleteError.message);
       return;
     }
-
-    // Insert new row
     const { data: newRow, error: insertError } = await supabase
       .from("elections")
       .insert({ election: role })
@@ -121,38 +96,26 @@ export default function AdminDashPage() {
       alert("Error inserting new role: " + insertError.message);
       return;
     }
-
     setRole(newRow.election || "");
     alert(`Role saved as "${newRow.election}". Only one row remains in 'elections'.`);
   };
 
-  // ----------------------------------------------------------------
-  // 6) Add Candidate
-  // ----------------------------------------------------------------
+  // Add a new candidate to the "candidates" table
   const handleAddCandidate = async () => {
     const trimmed = candidateName.trim();
     if (!trimmed) return;
     setCandidateName("");
-
-    const { error } = await supabase
-      .from("candidates")
-      .insert({ candidate: trimmed });
+    const { error } = await supabase.from("candidates").insert({ candidate: trimmed });
     if (error) {
       alert("Error inserting candidate: " + error.message);
       return;
     }
-
     setCandidates((prev) => [...prev, trimmed]);
   };
 
-  // ----------------------------------------------------------------
-  // 7) Remove Candidate
-  // ----------------------------------------------------------------
+  // Remove a candidate from the "candidates" table
   const handleRemoveCandidate = async (cand: string) => {
-    const { error } = await supabase
-      .from("candidates")
-      .delete()
-      .eq("candidate", cand);
+    const { error } = await supabase.from("candidates").delete().eq("candidate", cand);
     if (error) {
       alert("Error removing candidate: " + error.message);
       return;
@@ -160,9 +123,7 @@ export default function AdminDashPage() {
     setCandidates((prev) => prev.filter((c) => c !== cand));
   };
 
-  // ----------------------------------------------------------------
-  // 8) Reset Attendance
-  // ----------------------------------------------------------------
+  // Reset attendance data in the "emails" table
   const handleResetAttendance = async () => {
     try {
       const { error } = await supabase.from("emails").delete();
@@ -173,22 +134,17 @@ export default function AdminDashPage() {
     }
   };
 
-  // ----------------------------------------------------------------
-  // 9) Show Current Results -> read from `votes` table
-  // ----------------------------------------------------------------
+  // Show voting results by tallying votes from the "votes" table
   const handleShowResults = async () => {
     if (!role) {
       alert("No role set. Cannot show results.");
       setResults({});
       return;
     }
-
-    // 9A) Get all votes for the current role
     const { data: votes, error: voteError } = await supabase
       .from("votes")
       .select("candidate")
       .eq("role", role);
-
     if (voteError) {
       alert("Error fetching votes: " + voteError.message);
       setResults({});
@@ -199,26 +155,21 @@ export default function AdminDashPage() {
       setResults({});
       return;
     }
-
-    // 9B) Tally how many votes each candidate got
+    // Tally up votes per candidate
     const tally: { [candidate: string]: number } = {};
     for (const row of votes) {
       const cand = row.candidate;
       tally[cand] = (tally[cand] || 0) + 1;
     }
-
     setResults(tally);
   };
 
-  // ----------------------------------------------------------------
-  // 10) Reset ALL Voting Data -> clear the `votes` table
-  // ----------------------------------------------------------------
+  // Reset all votes by clearing the "votes" table
   const handleResetVotes = async () => {
     const { error } = await supabase
       .from("votes")
       .delete()
-      .gt("id", "00000000-0000-0000-0000-000000000000"); 
-
+      .gt("id", "00000000-0000-0000-0000-000000000000");
     if (error) {
       alert("Failed to reset votes: " + error.message);
     } else {
@@ -227,15 +178,28 @@ export default function AdminDashPage() {
     }
   };
 
+  // New handler to globally logout all admins.
+  const handleGlobalLogout = async () => {
+    // Call the logout-all endpoint to increment the session version.
+    await fetch("/api/logout-all", { method: "POST" });
+    // Optionally, also clear current session by calling normal logout.
+    await fetch("/api/logout", { method: "POST" });
+    router.push("/admin"); // Redirect back to the admin login page.
+  };
 
-  // ----------------------------------------------------------------
-  // RENDER
-  // ----------------------------------------------------------------
+  // RENDER: Display admin controls for setting role, managing candidates, and viewing/resetting voting data.
   return (
     <div className="min-h-screen bg-black p-4">
       <div className="max-w-4xl mx-auto space-y-4">
+        {/* Global Logout button for admins */}
+        <button
+          onClick={handleGlobalLogout}
+          className="w-full py-2 rounded font-medium mb-4"
+          style={{ backgroundColor: "#D32F2F", color: "#FFF" }}
+        >
+          Logout All Admins
+        </button>
 
-        {/* Role (Election) */}
         <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
           <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
             What are we voting for?
@@ -256,8 +220,6 @@ export default function AdminDashPage() {
             Save Role
           </button>
         </div>
-
-        {/* Admin Panel: Add Candidate */}
         <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
           <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
             Add Candidates
@@ -280,8 +242,6 @@ export default function AdminDashPage() {
             </button>
           </div>
         </div>
-
-        {/* Current Candidates */}
         <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
           <h3 className="text-xl font-semibold mb-2" style={{ color: "#FFD700" }}>
             Current Candidates:
@@ -305,8 +265,6 @@ export default function AdminDashPage() {
             <p style={{ color: "#FFF176" }}>No candidates yet.</p>
           )}
         </div>
-
-        {/* Voting Results */}
         <div className="rounded p-4 space-y-4" style={{ backgroundColor: "#2b2b2b" }}>
           <h3 className="text-xl font-semibold" style={{ color: "#FFD700" }}>
             Voting Results
@@ -318,7 +276,6 @@ export default function AdminDashPage() {
           >
             Show Current Results
           </button>
-
           {Object.keys(results).length > 0 ? (
             <ul>
               {Object.entries(results).map(([candidate, count]) => (
@@ -332,7 +289,6 @@ export default function AdminDashPage() {
               No votes yet (or no results to show).
             </p>
           )}
-
           <button
             onClick={handleResetVotes}
             className="w-full py-2 rounded font-medium"
@@ -341,8 +297,6 @@ export default function AdminDashPage() {
             Reset All Voting Data
           </button>
         </div>
-
-        {/* Reset Attendance (Supabase) */}
         <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
           <h3 className="text-xl font-semibold mb-4" style={{ color: "#FFD700" }}>
             Manage Attendance
