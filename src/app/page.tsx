@@ -20,21 +20,7 @@ export default function LoginPage() {
     const data = await response.json();
 
     if (data.valid) {
-      // -------------------------------------------------------
-      // (A) IF BACKEND SAYS USER IS ADMIN, SET isAdmin = "true"
-      // -------------------------------------------------------
-      // Let's assume your API returns data.isAdmin = true/false
-      if (data.isAdmin) {
-        sessionStorage.setItem("isAdmin", "true");
-      } else {
-        // Or if it's not an admin, store "false", or skip
-        sessionStorage.setItem("isAdmin", "false");
-      }
-
-      // Optionally store the user’s email, if desired
-      sessionStorage.setItem("userEmail", username);
-
-      // Redirect to Dashboard
+      // Remove sessionStorage sets; relying on cookie from API
       router.push("/dashboard");
     } else {
       setError(data.error || "Unable to login.");

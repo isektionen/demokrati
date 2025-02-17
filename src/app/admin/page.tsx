@@ -12,13 +12,26 @@ export default function AdminLoginPage() {
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Simple client-side check (for demo). 
-    // Replace with a real API call in production.
-    if (adminName === "admin" && adminPassword === "secret") {
-      sessionStorage.setItem("isAdmin", "true");
-      router.push("/admindash");
-    } else {
-      setError("Invalid admin credentials");
+    try {
+      const response = await fetch("/api/admin-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ adminName, adminPassword }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Do not set sessionStorage; the API sets the secure cookie
+        router.push("/admindash");
+      } else {
+        setError(data.message || "Invalid admin credentials");
+      }
+    } catch (error) {
+      console.error("Error processing admin login:", error);
+      setError("Internal server error");
     }
   };
 

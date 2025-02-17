@@ -5,14 +5,10 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 // -----------------------------
-// 1) Supabase setup
+// 1) Supabase setup - Retrieve Supabase credentials from environment variables
 // -----------------------------
-const SUPABASE_URL = "https://qegwcetrhbaaplkaeppd.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-  + "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlZ3djZXRyaGJhYXBsa2FlcHBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg3ODY4MTYsImV4cCI6MjA1NDM2MjgxNn0."
-  + "M7CZVaull1RQgKSSAduoY5ZAuR7000L2PUB6Go8a-us";
-
+const SUPABASE_URL: string = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY: string = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function VotingDashboard() {
@@ -36,13 +32,16 @@ export default function VotingDashboard() {
   // 3) Check if user is logged in, or redirect
   // -----------------------------
   useEffect(() => {
-    const storedEmail = sessionStorage.getItem("userEmail");
-    if (!storedEmail) {
-      // If not logged in, redirect to home page
-      router.push("/");
-    } else {
-      setEmail(storedEmail);
-    }
+    const checkUser = async () => {
+      const res = await fetch("/api/verify-user");
+      if (res.ok) {
+        const result = await res.json();
+        setEmail(result.email);
+      } else {
+        router.push("/");
+      }
+    };
+    checkUser();
   }, [router]);
 
   // -----------------------------

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Use your actual project’s URL and ANON key
-const SUPABASE_URL = "https://qegwcetrhbaaplkaeppd.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlZ3djZXRyaGJhYXBsa2FlcHBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg3ODY4MTYsImV4cCI6MjA1NDM2MjgxNn0.M7CZVaull1RQgKSSAduoY5ZAuR7000L2PUB6Go8a-us";
+// Retrieve Supabase credentials from environment variables
+const SUPABASE_URL: string = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY: string = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 
 // We’ll handle POST requests to /api/check-email
 export async function POST(request: Request) {
@@ -29,7 +30,13 @@ export async function POST(request: Request) {
 
     // 4) If data length > 0, the email is found
     if (data && data.length > 0) {
-      return NextResponse.json({ valid: true }, { status: 200 });
+      const response = NextResponse.json({ valid: true }, { status: 200 });
+      response.cookies.set("userEmail", email, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+      });
+      return response;
     } else {
       // Not found in the emails table
       return NextResponse.json(
