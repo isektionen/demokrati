@@ -115,11 +115,15 @@ export default function VotingDashboard() {
       return;
     }
 
-    // Insert a new vote record
+    // Create unique_vote by concatenating user_email and role
+    const unique_vote = `${email}-${role}`;
+
+    // Insert a new vote record including unique_vote
     const { error: insertErr } = await supabase.from("votes").insert({
       user_email: email,
       role,
       candidate: selectedCandidate,
+      unique_vote, // added unique_vote
     });
     if (insertErr) {
       alert("Error inserting vote: " + insertErr.message);

@@ -86,6 +86,7 @@ export default function AdminDashPage() {
     candidate: string;
     firstname: string;
     lastname: string;
+    role: string;
   }>>([]);
   
   // New state for attendance modal
@@ -276,13 +277,14 @@ export default function AdminDashPage() {
    */
   const handleShowDetailedVotes = async () => {
     // Define types for vote and email entries.
-    type VoteRow = { user_email: string; candidate: string };
+    type VoteRow = { user_email: string; candidate: string; role: string }; // modified to include "role"
     type EmailData = { email: string; firstname: string; lastname: string };
 
-    // Fetch votes with user_email and candidate
+    // Fetch votes with user_email, candidate and role
     const { data: votesData, error: votesError } = await supabase
       .from("votes")
-      .select("user_email, candidate");
+      .select("user_email, candidate, role"); // modified to include "role"
+    
     if (votesError) {
       showAlert("Error", "Error fetching detailed votes: " + votesError.message);
       return;
@@ -291,9 +293,8 @@ export default function AdminDashPage() {
       showAlert("Notice", "No votes found.");
       return;
     }
-    // Extract unique emails from votes with proper type annotation
+    
     const uniqueEmails = [...new Set((votesData as VoteRow[]).map((vote: VoteRow) => vote.user_email))];
-    // Fetch email details (firstname, lastname) from emails table
     const { data: emailsData, error: emailsError } = await supabase
       .from("emails")
       .select("email, firstname, lastname")
@@ -302,15 +303,15 @@ export default function AdminDashPage() {
       showAlert("Error", "Error fetching email details: " + emailsError.message);
       return;
     }
-    // Build lookup for email details
     const emailLookup: Record<string, { firstname: string; lastname: string }> = {};
     (emailsData as EmailData[])?.forEach((entry: EmailData) => {
       emailLookup[entry.email] = { firstname: entry.firstname, lastname: entry.lastname };
     });
-    // Merge vote data with email details
+    
+    // Merge vote data with email details and include role
     const merged = (votesData as VoteRow[]).map((vote: VoteRow) => {
       const name = emailLookup[vote.user_email] || { firstname: "Unknown", lastname: "" };
-      return { candidate: vote.candidate, firstname: name.firstname, lastname: name.lastname };
+      return { candidate: vote.candidate, firstname: name.firstname, lastname: name.lastname, role: vote.role };
     });
     setDetailedVotes(merged);
     setShowVotesModal(true);
@@ -616,13 +617,13 @@ export default function AdminDashPage() {
                     onClick={() => setShowVotesModal(false)}
                     style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
                   >
-                    Close
+                    Close y
                   </button>
                 </div>
                 <ul>
                   {detailedVotes.map((vote, index) => (
                     <li key={index}>
-                      {vote.firstname} {vote.lastname}: {vote.candidate}
+                      {vote.firstname} {vote.lastname} – voted for {vote.candidate} in role {vote.role}
                     </li>
                   ))}
                 </ul>
