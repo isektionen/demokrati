@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -71,11 +71,11 @@ export default function VotingDashboard() {
   useEffect(() => {
     const checkUserVote = async () => {
       if (role && email) {
+        const uniqueVote = `${email}_${role}`; // compute unique_vote
         const { data: existingVotes, error: voteErr } = await supabase
           .from("votes")
           .select("*")
-          .eq("role", role)
-          .eq("user_email", email);
+          .eq("unique_vote", uniqueVote);
         if (voteErr) {
           console.error("Error checking votes:", voteErr);
         } else if (existingVotes && existingVotes.length > 0) {
@@ -99,12 +99,13 @@ export default function VotingDashboard() {
       return;
     }
 
-    // Double-check if the user already voted to prevent duplicate entries
+    const uniqueVote = `${email}_${role}`; // compute unique_vote
+
+    // Double-check if the user already voted using unique_vote
     const { data: alreadyVoted, error: checkErr } = await supabase
       .from("votes")
       .select("*")
-      .eq("role", role)
-      .eq("user_email", email);
+      .eq("unique_vote", uniqueVote);
     if (checkErr) {
       alert("Error checking votes: " + checkErr.message);
       return;
@@ -115,15 +116,12 @@ export default function VotingDashboard() {
       return;
     }
 
-    // Create unique_vote by concatenating user_email and role
-    const unique_vote = `${email}-${role}`;
-
-    // Insert a new vote record including unique_vote
+    // Insert a new vote record along with unique_vote
     const { error: insertErr } = await supabase.from("votes").insert({
       user_email: email,
       role,
       candidate: selectedCandidate,
-      unique_vote, // added unique_vote
+      unique_vote: uniqueVote, // add unique_vote column
     });
     if (insertErr) {
       alert("Error inserting vote: " + insertErr.message);
@@ -140,46 +138,52 @@ export default function VotingDashboard() {
     router.push("/");
   };
 
-  if (loading) return <div>Loading...</div>;
-  if (loadError) return <div>{loadError}</div>;
+  // Memoize the candidate list input rendering to avoid re-computations on re-renders
+  const candidateRadioButtons = useMemo(() => {
+    return candidates.map((c) => (
+      <label key={c} className="block mb-2" style={{ color: "#FFF176" }}>
+        <input
+          type="radio"
+          name="candidate"
+          value={c}
+          className="mr-2"
+          checked={selectedCandidate === c}
+          onChange={() => setSelectedCandidate(c)}
+        />
+        {c}
+      </label>
+    ));
+  }, [candidates, selectedCandidate]);
 
   // RENDER: Display the voting form, current role and logout button
   return (
     <div className="flex items-center justify-center min-h-screen bg-black p-4">
-      <div className="w-full max-w-sm rounded-lg p-6" style={{ backgroundColor: "#2b2b2b" }}>
-        <h1 className="text-3xl font-bold text-center mb-6" style={{ color: "#FFD700" }}>
-          Demokrat-I
-        </h1>
-        {role ? (
-          <p className="mb-4" style={{ color: "#FFF176" }}>
-            <strong>We are currently voting for: </strong> {role}
-          </p>
-        ) : (
-          <p className="mb-4" style={{ color: "#FFF176" }}>
-            <strong>No role set. Please check with the admin.</strong>
-          </p>
-        )}
-        {hasVoted ? (
-          <div style={{ color: "#FFF176" }}>
-            You have already voted for <strong>{role}</strong>.<br />
-            Please wait for the next election.
-          </div>
-        ) : (
-          role && candidates.length > 0 ? (
+      {loading ? (
+        <div>Loading...</div>
+      ) : loadError ? (
+        <div>{loadError}</div>
+      ) : (
+        <div className="w-full max-w-sm rounded-lg p-6" style={{ backgroundColor: "#2b2b2b" }}>
+          <h1 className="text-3xl font-bold text-center mb-6" style={{ color: "#FFD700" }}>
+            Demokrat-I
+          </h1>
+          {role ? (
+            <p className="mb-4" style={{ color: "#FFF176" }}>
+              <strong>We are currently voting for: </strong> {role}
+            </p>
+          ) : (
+            <p className="mb-4" style={{ color: "#FFF176" }}>
+              <strong>No role set. Please check with the admin.</strong>
+            </p>
+          )}
+          {hasVoted ? (
+            <div style={{ color: "#FFF176" }}>
+              You have already voted for <strong>{role}</strong>.<br />
+              Please wait for the next election.
+            </div>
+          ) : role && candidates.length > 0 ? (
             <form onSubmit={handleVoteSubmit}>
-              {candidates.map((c) => (
-                <label key={c} className="block mb-2" style={{ color: "#FFF176" }}>
-                  <input
-                    type="radio"
-                    name="candidate"
-                    value={c}
-                    className="mr-2"
-                    checked={selectedCandidate === c}
-                    onChange={() => setSelectedCandidate(c)}
-                  />
-                  {c}
-                </label>
-              ))}
+              {candidateRadioButtons}
               <button type="submit" className="w-full p-2 rounded font-bold mt-4" style={{ backgroundColor: "#996633", color: "#FFD700" }}>
                 Submit Vote
               </button>
@@ -188,12 +192,12 @@ export default function VotingDashboard() {
             <p style={{ color: "#FFF176" }}>
               {role ? "No candidates available." : "No role is set for voting yet."}
             </p>
-          )
-        )}
-        <button onClick={handleLogout} className="mt-6 bg-red-500 text-white p-2 rounded w-full">
-          Logout
-        </button>
-      </div>
+          )}
+          <button onClick={handleLogout} className="mt-6 bg-red-500 text-white p-2 rounded w-full">
+            Logout
+          </button>
+        </div>
+      )}
     </div>
   );
 }

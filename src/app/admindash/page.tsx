@@ -82,12 +82,7 @@ export default function AdminDashPage() {
 
   // New state for detailed votes modal
   const [showVotesModal, setShowVotesModal] = useState(false);
-  const [detailedVotes, setDetailedVotes] = useState<Array<{
-    candidate: string;
-    firstname: string;
-    lastname: string;
-    role: string;
-  }>>([]);
+  const [detailedVotes, setDetailedVotes] = useState<Array<{ candidate: string; role: string; firstname: string; lastname: string }>>([]);
   
   // New state for attendance modal
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
@@ -102,49 +97,43 @@ export default function AdminDashPage() {
    */
   useEffect(() => {
     const loadSupabaseData = async () => {
-      // Fetch all rows from the "elections" table
-      const { data: electionRows, error: electionErr } = await supabase
-        .from("elections")
-        .select("*");
+      try {
+        const [electionRes, candidatesRes] = await Promise.all([
+          supabase.from("elections").select("id, election"),  // select only needed columns
+          supabase.from("candidates").select("candidate")
+        ]);
 
-      if (electionErr || !electionRows) {
-        console.error("Error fetching elections:", electionErr);
-        return;
-      }
-
-      // If no rows exist, insert a default row
-      if (electionRows.length === 0) {
-        const { data: inserted, error: insertErr } = await supabase
-          .from("elections")
-          .insert({ election: "" })
-          .select()
-          .single();
-
-        if (insertErr) {
-          console.error("Error inserting default row:", insertErr);
-          return;
+        if (electionRes.error || !electionRes.data) {
+          console.error("Error fetching elections:", electionRes.error);
+        } else {
+          const electionRows = electionRes.data;
+          if (electionRows.length === 0) {
+            const { data: inserted, error: insertErr } = await supabase
+              .from("elections")
+              .insert({ election: "" })
+              .select("election")
+              .single();
+            if (insertErr) {
+              console.error("Error inserting default row:", insertErr);
+              return;
+            }
+            setRole(inserted.election || "");
+          } else {
+            setRole(electionRows[0].election || "");
+            if (electionRows.length > 1) {
+              const idsToDelete = electionRows.slice(1).map((r) => r.id);
+              await supabase.from("elections").delete().in("id", idsToDelete);
+            }
+          }
         }
-        setRole(inserted.election || "");
-      } else {
-        // If multiple rows exist, keep the first and delete the rest
-        const first = electionRows[0];
-        setRole(first.election || "");
 
-        if (electionRows.length > 1) {
-          const idsToDelete = electionRows.slice(1).map((r) => r.id);
-          await supabase.from("elections").delete().in("id", idsToDelete);
+        if (candidatesRes.error) {
+          console.error("Error fetching candidates:", candidatesRes.error);
+        } else if (candidatesRes.data && Array.isArray(candidatesRes.data)) {
+          setCandidates(candidatesRes.data.map((row) => row.candidate));
         }
-      }
-
-      // Fetch all candidates from the "candidates" table
-      const { data: candidatesData, error: candidatesErr } = await supabase
-        .from("candidates")
-        .select("candidate");
-
-      if (candidatesErr) {
-        console.error("Error fetching candidates:", candidatesErr);
-      } else if (candidatesData && Array.isArray(candidatesData)) {
-        setCandidates(candidatesData.map((row) => row.candidate));
+      } catch (error) {
+        console.error("Error loading data:", error);
       }
     };
 
@@ -277,14 +266,13 @@ export default function AdminDashPage() {
    */
   const handleShowDetailedVotes = async () => {
     // Define types for vote and email entries.
-    type VoteRow = { user_email: string; candidate: string; role: string }; // modified to include "role"
+    type VoteRow = { user_email: string; candidate: string; role: string };
     type EmailData = { email: string; firstname: string; lastname: string };
 
-    // Fetch votes with user_email, candidate and role
+    // Fetch votes with user_email, candidate, and role
     const { data: votesData, error: votesError } = await supabase
       .from("votes")
-      .select("user_email, candidate, role"); // modified to include "role"
-    
+      .select("user_email, candidate, role");
     if (votesError) {
       showAlert("Error", "Error fetching detailed votes: " + votesError.message);
       return;
@@ -307,11 +295,10 @@ export default function AdminDashPage() {
     (emailsData as EmailData[])?.forEach((entry: EmailData) => {
       emailLookup[entry.email] = { firstname: entry.firstname, lastname: entry.lastname };
     });
-    
-    // Merge vote data with email details and include role
+    // Merge vote data with email details (including role)
     const merged = (votesData as VoteRow[]).map((vote: VoteRow) => {
       const name = emailLookup[vote.user_email] || { firstname: "Unknown", lastname: "" };
-      return { candidate: vote.candidate, firstname: name.firstname, lastname: name.lastname, role: vote.role };
+      return { candidate: vote.candidate, role: vote.role, firstname: name.firstname, lastname: name.lastname };
     });
     setDetailedVotes(merged);
     setShowVotesModal(true);
@@ -623,7 +610,7 @@ export default function AdminDashPage() {
                 <ul>
                   {detailedVotes.map((vote, index) => (
                     <li key={index}>
-                      {vote.firstname} {vote.lastname} – voted for {vote.candidate} in role {vote.role}
+                      {vote.firstname} {vote.lastname} voted for {vote.candidate} (<em>{vote.role}</em>)
                     </li>
                   ))}
                 </ul>
