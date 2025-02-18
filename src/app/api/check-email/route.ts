@@ -16,8 +16,6 @@ export async function POST(request: Request) {
     // Trim possible whitespace and convert to lower-case
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPincode = pincode.trim();
-    // Combine email and pincode with ";" as the separator
-    const combined = `${trimmedEmail};${trimmedPincode}`;
 
     // Temporary debug query to print all emails from supabase (for development only)
     if (process.env.USE_FILE_DEBUG == "true") {
@@ -27,11 +25,12 @@ export async function POST(request: Request) {
       console.log("Debug - All emails in table:", allData);
     }
 
-    // Use exact matching instead of ilike for testing:
+    // Query Supabase for a record with matching email and password
     const { data, error } = await supabase
       .from("emails")
       .select("*")
-      .eq("email", combined);
+      .eq("email", trimmedEmail)
+      .eq("password", trimmedPincode);
 
     if (error) {
       console.error("Supabase error:", error);
@@ -52,7 +51,7 @@ export async function POST(request: Request) {
       });
       return response;
     } else {
-      console.warn("No matching record found for:", combined);
+      console.warn("No matching record found for email:", trimmedEmail);
       return NextResponse.json(
         { valid: false, error: "Invalid email or pincode." },
         { status: 404 }
