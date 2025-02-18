@@ -40,6 +40,14 @@ export default function AdminDashPage() {
   // Determine if the user can modify data. Only "all" or "valberedning" can modify.
   const canModify = privileges === "all" || privileges === "valberedning";
 
+  // New state for alert modal
+  const [alertInfo, setAlertInfo] = useState<{ title: string; message: string } | null>(null);
+  
+  // Helper to show alert modal
+  const showAlert = (title: string, message: string) => {
+    setAlertInfo({ title, message });
+  };
+
   /**
    * useEffect to verify admin status on component mount.
    * - If not an admin, redirect to /admin (login page).
@@ -71,6 +79,22 @@ export default function AdminDashPage() {
   const [candidateName, setCandidateName] = useState("");
   const [candidates, setCandidates] = useState<string[]>([]);
   const [results, setResults] = useState<{ [candidate: string]: number }>({});
+
+  // New state for detailed votes modal
+  const [showVotesModal, setShowVotesModal] = useState(false);
+  const [detailedVotes, setDetailedVotes] = useState<Array<{
+    candidate: string;
+    firstname: string;
+    lastname: string;
+  }>>([]);
+  
+  // New state for attendance modal
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceList, setAttendanceList] = useState<{ firstname: string; lastname: string; time: string }[]>([]);
+
+  // New state for confirmation modals
+  const [showResetAttendanceConfirm, setShowResetAttendanceConfirm] = useState(false);
+  const [showResetVotesConfirm, setShowResetVotesConfirm] = useState(false);
 
   /**
    * On mount, load the election role and candidates from Supabase.
@@ -137,7 +161,7 @@ export default function AdminDashPage() {
       .gt("id", "00000000-0000-0000-0000-000000000000");
 
     if (deleteError) {
-      alert("Error clearing old roles: " + deleteError.message);
+      showAlert("Error", "Error clearing old roles: " + deleteError.message);
       return;
     }
 
@@ -149,12 +173,12 @@ export default function AdminDashPage() {
       .single();
 
     if (insertError) {
-      alert("Error inserting new role: " + insertError.message);
+      showAlert("Error", "Error inserting new role: " + insertError.message);
       return;
     }
 
     setRole(newRow.election || "");
-    alert(`Role saved as "${newRow.election}". Only one row remains in 'elections'.`);
+    showAlert("Success", `Role saved as "${newRow.election}".`);
   };
 
   /**
@@ -168,7 +192,7 @@ export default function AdminDashPage() {
     const { error } = await supabase.from("candidates").insert({ candidate: trimmed });
 
     if (error) {
-      alert("Error inserting candidate: " + error.message);
+      showAlert("Error", "Error inserting candidate: " + error.message);
       return;
     }
 
@@ -182,7 +206,7 @@ export default function AdminDashPage() {
     const { error } = await supabase.from("candidates").delete().eq("candidate", cand);
 
     if (error) {
-      alert("Error removing candidate: " + error.message);
+      showAlert("Error", "Error removing candidate: " + error.message);
       return;
     }
 
@@ -201,12 +225,12 @@ export default function AdminDashPage() {
 
       if (error) throw error;
 
-      alert("Attendance table in Supabase has been reset!");
+      showAlert("Success", "Attendance has been reset!");
     } catch (err) {
       if (err instanceof Error) {
-        alert("Failed to reset attendance: " + err.message);
+        showAlert("Error", "Failed to reset attendance: " + err.message);
       } else {
-        alert("Failed to reset attendance (unknown error).");
+        showAlert("Error", "Failed to reset attendance (unknown error).");
       }
     }
   };
@@ -216,7 +240,7 @@ export default function AdminDashPage() {
    */
   const handleShowResults = async () => {
     if (!role) {
-      alert("No role set. Cannot show results.");
+      showAlert("Notice", "No role set. Cannot show results.");
       setResults({});
       return;
     }
@@ -227,13 +251,13 @@ export default function AdminDashPage() {
       .eq("role", role);
 
     if (voteError) {
-      alert("Error fetching votes: " + voteError.message);
+      showAlert("Error", "Error fetching votes: " + voteError.message);
       setResults({});
       return;
     }
 
     if (!votes || votes.length === 0) {
-      alert(`No votes found for role: ${role}`);
+      showAlert("Notice", `No votes found for role: ${role}`);
       setResults({});
       return;
     }
@@ -248,6 +272,62 @@ export default function AdminDashPage() {
   };
 
   /**
+   * Handle showing detailed votes.
+   */
+  const handleShowDetailedVotes = async () => {
+    // Define types for vote and email entries.
+    type VoteRow = { user_email: string; candidate: string };
+    type EmailData = { email: string; firstname: string; lastname: string };
+
+    // Fetch votes with user_email and candidate
+    const { data: votesData, error: votesError } = await supabase
+      .from("votes")
+      .select("user_email, candidate");
+    if (votesError) {
+      showAlert("Error", "Error fetching detailed votes: " + votesError.message);
+      return;
+    }
+    if (!votesData || votesData.length === 0) {
+      showAlert("Notice", "No votes found.");
+      return;
+    }
+    // Extract unique emails from votes with proper type annotation
+    const uniqueEmails = [...new Set((votesData as VoteRow[]).map((vote: VoteRow) => vote.user_email))];
+    // Fetch email details (firstname, lastname) from emails table
+    const { data: emailsData, error: emailsError } = await supabase
+      .from("emails")
+      .select("email, firstname, lastname")
+      .in("email", uniqueEmails);
+    if (emailsError) {
+      showAlert("Error", "Error fetching email details: " + emailsError.message);
+      return;
+    }
+    // Build lookup for email details
+    const emailLookup: Record<string, { firstname: string; lastname: string }> = {};
+    (emailsData as EmailData[])?.forEach((entry: EmailData) => {
+      emailLookup[entry.email] = { firstname: entry.firstname, lastname: entry.lastname };
+    });
+    // Merge vote data with email details
+    const merged = (votesData as VoteRow[]).map((vote: VoteRow) => {
+      const name = emailLookup[vote.user_email] || { firstname: "Unknown", lastname: "" };
+      return { candidate: vote.candidate, firstname: name.firstname, lastname: name.lastname };
+    });
+    setDetailedVotes(merged);
+    setShowVotesModal(true);
+  };
+
+  // New: Handle showing attendance list.
+  const handleShowAttendance = async () => {
+    const { data, error } = await supabase.from("emails").select("firstname, lastname, time");
+    if (error) {
+      showAlert("Error", "Error fetching attendance: " + error.message);
+      return;
+    }
+    setAttendanceList(data);
+    setShowAttendanceModal(true);
+  };
+
+  /**
    * Handle resetting all voting data in the "votes" table.
    */
   const handleResetVotes = async () => {
@@ -257,11 +337,11 @@ export default function AdminDashPage() {
       .not("id", "is", null); // Match all rows
 
     if (error) {
-      alert("Failed to reset voting data: " + error.message);
+      showAlert("Error", "Failed to reset voting data: " + error.message);
       return;
     }
 
-    alert("Voting data in Supabase has been reset!");
+    showAlert("Success", "Voting data has been reset!");
   };
 
   /**
@@ -444,9 +524,18 @@ export default function AdminDashPage() {
               >
                 Show Voting Results
               </button>
-              {canModify && (
+              {privileges === "all" && (
                 <button
-                  onClick={handleResetVotes}
+                  onClick={handleShowDetailedVotes}
+                  className="w-full py-2 rounded font-medium mb-2"
+                  style={{ backgroundColor: "#4A148C", color: "#FFF" }}
+                >
+                  Show Detailed Votes
+                </button>
+              )}
+              {privileges === "all" && (
+                <button
+                  onClick={() => setShowResetVotesConfirm(true)}
                   className="w-full py-2 rounded font-medium mb-2"
                   style={{ backgroundColor: "#F44336", color: "#FFF" }}
                 >
@@ -476,12 +565,21 @@ export default function AdminDashPage() {
                 </h3>
                 <div className="flex gap-2">
                   <button
-                    onClick={handleResetAttendance}
+                    onClick={() => setShowResetAttendanceConfirm(true)}
                     className="flex-1 px-4 py-2 rounded font-medium"
                     style={{ backgroundColor: "#F44336", color: "#FFF" }}
                   >
                     Reset Attendance
                   </button>
+                  {(privileges === "all" || privileges === "valberedning") && (
+                    <button
+                      onClick={handleShowAttendance}
+                      className="flex-1 px-4 py-2 rounded font-medium"
+                      style={{ backgroundColor: "#1976D2", color: "#FFF" }}
+                    >
+                      Show Attendance
+                    </button>
+                  )}
                   {privileges === "all" && (
                     <button
                       onClick={handleGlobalLogout}
@@ -503,6 +601,144 @@ export default function AdminDashPage() {
             >
               Logout
             </button>
+          </div>
+
+          {/* Modal for Detailed Votes */}
+          {showVotesModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div 
+                className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto" 
+                style={{ maxHeight: "80vh" }}
+              >
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-semibold">Detailed Votes</h3>
+                  <button
+                    onClick={() => setShowVotesModal(false)}
+                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Close
+                  </button>
+                </div>
+                <ul>
+                  {detailedVotes.map((vote, index) => (
+                    <li key={index}>
+                      {vote.firstname} {vote.lastname}: {vote.candidate}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* New: Modal for Attendance */}
+          {showAttendanceModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div 
+                className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto" 
+                style={{ maxHeight: "80vh" }}
+              >
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-semibold">
+                    Attendance ({attendanceList.length} total)
+                  </h3>
+                  <button
+                    onClick={() => setShowAttendanceModal(false)}
+                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Close
+                  </button>
+                </div>
+                <ul>
+                  {attendanceList.map((entry, index) => (
+                    <li key={index}>
+                      {entry.firstname} {entry.lastname} – checked in at {new Date(entry.time).toLocaleString()}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Confirmation Modal for Reset Attendance */}
+          {showResetAttendanceConfirm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div className="bg-white p-4 rounded w-3/4">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-semibold">Confirm Reset Attendance</h3>
+                  <button
+                    onClick={() => setShowResetAttendanceConfirm(false)}
+                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <p>Are you sure you want to reset the attendance data?</p>
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => { setShowResetAttendanceConfirm(false); handleResetAttendance(); }}
+                    style={{ backgroundColor: "#F44336", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Yes, Reset
+                  </button>
+                  <button
+                    onClick={() => setShowResetAttendanceConfirm(false)}
+                    style={{ backgroundColor: "#1976D2", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Confirmation Modal for Reset Voting Results */}
+          {showResetVotesConfirm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div className="bg-white p-4 rounded w-3/4">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-semibold">Confirm Reset Voting Results</h3>
+                  <button
+                    onClick={() => setShowResetVotesConfirm(false)}
+                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <p>Are you sure you want to reset all voting data?</p>
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => { setShowResetVotesConfirm(false); handleResetVotes(); }}
+                    style={{ backgroundColor: "#F44336", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Yes, Reset
+                  </button>
+                  <button
+                    onClick={() => setShowResetVotesConfirm(false)}
+                    style={{ backgroundColor: "#1976D2", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      )}
+      {/* Alert Modal */}
+      {alertInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-4 rounded w-3/4">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-xl font-semibold">{alertInfo.title}</h3>
+              <button
+                onClick={() => setAlertInfo(null)}
+                style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+              >
+                Ok
+              </button>
+            </div>
+            <p>{alertInfo.message}</p>
           </div>
         </div>
       )}
