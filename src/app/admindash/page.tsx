@@ -8,9 +8,15 @@ import { createClient } from "@supabase/supabase-js";
  * Supabase client initialization for admin-side operations.
  * Uses environment variables for the Supabase URL and anon key.
  */
-const SUPABASE_URL: string = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY: string = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error("Supabase URL and Anon Key are missing from environment variables");
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 
 /**
  * AdminDashPage component:
