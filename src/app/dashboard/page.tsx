@@ -2,108 +2,91 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "../../../lib/supabaseClient";
 
-// -----------------------------
-// 1) Supabase setup
-// -----------------------------
-const SUPABASE_URL = "https://qegwcetrhbaaplkaeppd.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-  + "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlZ3djZXRyaGJhYXBsa2FlcHBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg3ODY4MTYsImV4cCI6MjA1NDM2MjgxNn0."
-  + "M7CZVaull1RQgKSSAduoY5ZAuR7000L2PUB6Go8a-us";
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
+// VotingDashboard: Displays the current election role, candidate options and handles voting and logout
 export default function VotingDashboard() {
   const router = useRouter();
 
-  // -----------------------------
-  // 2) State Variables
-  // -----------------------------
-  // The logged-in user’s email (from sessionStorage)
+  // State variables for user email, election role, candidate list, etc.
   const [email, setEmail] = useState("");
-  // The single role we fetched from `elections` (e.g., “President”)
   const [role, setRole] = useState("");
-  // The list of candidate names from `candidates`
   const [candidates, setCandidates] = useState<string[]>([]);
-  // Which candidate the user chooses
   const [selectedCandidate, setSelectedCandidate] = useState("");
-  // Has the user already voted for the current role?
   const [hasVoted, setHasVoted] = useState(false);
+  // Loading and error states improve user experience
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-  // -----------------------------
-  // 3) Check if user is logged in, or redirect
-  // -----------------------------
+  // 1. Check if user is logged in via secure cookie (using /api/verify-user)
   useEffect(() => {
-    const storedEmail = sessionStorage.getItem("userEmail");
-    if (!storedEmail) {
-      // If not logged in, redirect to home page
-      router.push("/");
-    } else {
-      setEmail(storedEmail);
-    }
+    const checkUser = async () => {
+      const res = await fetch("/api/verify-user");
+      if (res.ok) {
+        const result = await res.json();
+        setEmail(result.email);
+      } else {
+        router.push("/");
+      }
+    };
+    checkUser();
   }, [router]);
 
-  // -----------------------------
-  // 4) Fetch: 1) the single role from `elections`, 2) all candidates, 3) check if user has voted
-  // -----------------------------
+  // 2. Fetch election data and candidate list once.
   useEffect(() => {
-    const loadData = async () => {
-      // 4A) Get the single row from `elections` (if any)
-      const { data: electionData, error: electionErr } = await supabase
-        .from("elections")
-        .select("election")
-        .limit(1); // we only want one row
-      if (electionErr) {
-        console.error("Error fetching election:", electionErr);
-      } else if (electionData && electionData.length > 0) {
-        const currentRole = electionData[0].election || "";
-        setRole(currentRole);
-      } else {
-        // If no row, there's no role set
-        setRole("");
+    const fetchElectionAndCandidates = async () => {
+      try {
+        // Fetch the current election role from the "elections" table
+        const { data: electionData, error: electionErr } = await supabase
+          .from("elections")
+          .select("election")
+          .limit(1);
+        if (electionErr) {
+          console.error("Error fetching election:", electionErr);
+        } else if (electionData && electionData.length > 0) {
+          setRole(electionData[0].election || "");
+        } else {
+          setRole("");
+        }
+
+        // Fetch the candidate list from "candidates" table
+        const { data: candidateData, error: candidateErr } = await supabase
+          .from("candidates")
+          .select("candidate");
+        if (candidateErr) {
+          console.error("Error fetching candidates:", candidateErr);
+        } else if (candidateData) {
+          setCandidates(candidateData.map((row) => row.candidate));
+        }
+      } catch {
+        setLoadError("Failed to load data.");
+      } finally {
+        setLoading(false);
       }
+    };
+    fetchElectionAndCandidates();
+  }, []); // run once on mount
 
-      // 4B) Get all candidates
-      const { data: candidateData, error: candidateErr } = await supabase
-        .from("candidates")
-        .select("candidate");
-      if (candidateErr) {
-        console.error("Error fetching candidates:", candidateErr);
-      } else if (candidateData) {
-        setCandidates(candidateData.map((row) => row.candidate));
-      }
-
-      // 4C) Check if this user has already voted for the current role
-      //    We'll do a separate fetch here AFTER we know the role
-      //    If role is empty, there's no vote to check
-      if (role) {
-        try {
-          const { data: existingVotes, error: voteErr } = await supabase
-            .from("votes")
-            .select("*")
-            .eq("role", role)
-            .eq("user_email", email);
-
-          if (voteErr) {
-            console.error("Error checking votes:", voteErr);
-          } else if (existingVotes && existingVotes.length > 0) {
-            // They have already voted
-            setHasVoted(true);
-          }
-        } catch (err) {
-          console.error("Error checking if user voted:", err);
+  // 3. Check if the user has already voted when role and email are set.
+  useEffect(() => {
+    const checkUserVote = async () => {
+      if (role && email) {
+        const { data: existingVotes, error: voteErr } = await supabase
+          .from("votes")
+          .select("*")
+          .eq("role", role)
+          .eq("user_email", email);
+        if (voteErr) {
+          console.error("Error checking votes:", voteErr);
+        } else if (existingVotes && existingVotes.length > 0) {
+          setHasVoted(true);
         }
       }
     };
+    checkUserVote();
+  }, [role, email]);
 
-    loadData();
-  }, [role, email]); // Only re-run if "role" or "email" changes
-
-  // -----------------------------
-  // 5) Submit Vote -> Insert row into `votes` (if not already voted)
-  // -----------------------------
+  // Handle vote submission by inserting a record into the "votes" table
   const handleVoteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -116,8 +99,7 @@ export default function VotingDashboard() {
       return;
     }
 
-    // Double-check if user has already voted
-    // (If you add a unique constraint in the DB, that also protects you.)
+    // Double-check if the user already voted to prevent duplicate entries
     const { data: alreadyVoted, error: checkErr } = await supabase
       .from("votes")
       .select("*")
@@ -133,67 +115,52 @@ export default function VotingDashboard() {
       return;
     }
 
-    // Insert new row in `votes`
+    // Insert a new vote record
     const { error: insertErr } = await supabase.from("votes").insert({
       user_email: email,
       role,
       candidate: selectedCandidate,
     });
-
     if (insertErr) {
-      // If you have the unique constraint, you'd catch the duplicate error here
       alert("Error inserting vote: " + insertErr.message);
       return;
     }
 
-    // Mark user as having voted
     setHasVoted(true);
     alert(`You voted for: ${selectedCandidate}`);
   };
 
-  // -----------------------------
-  // 6) Logout
-  // -----------------------------
-  const handleLogout = () => {
-    sessionStorage.removeItem("userEmail");
+  // Logout by calling the logout API and then redirecting to the homepage
+  const handleLogout = async () => {
+    await fetch("/api/logout", { method: "POST" });
     router.push("/");
   };
 
-  // -----------------------------
-  // RENDER
-  // -----------------------------
+  if (loading) return <div>Loading...</div>;
+  if (loadError) return <div>{loadError}</div>;
+
+  // RENDER: Display the voting form, current role and logout button
   return (
     <div className="flex items-center justify-center min-h-screen bg-black p-4">
-      <div
-        className="w-full max-w-sm rounded-lg p-6"
-        style={{ backgroundColor: "#2b2b2b" }}
-      >
-        <h1
-          className="text-3xl font-bold text-center mb-6"
-          style={{ color: "#FFD700" }}
-        >
-          demokrat-I
+      <div className="w-full max-w-sm rounded-lg p-6" style={{ backgroundColor: "#2b2b2b" }}>
+        <h1 className="text-3xl font-bold text-center mb-6" style={{ color: "#FFD700" }}>
+          Demokrat-I
         </h1>
-
-        {/* Show the role being voted on, if any */}
         {role ? (
           <p className="mb-4" style={{ color: "#FFF176" }}>
-            <strong>We are currently voting for:</strong> {role}
+            <strong>We are currently voting for: </strong> {role}
           </p>
         ) : (
           <p className="mb-4" style={{ color: "#FFF176" }}>
             <strong>No role set. Please check with the admin.</strong>
           </p>
         )}
-
-        {/* If the user has already voted, show a message */}
         {hasVoted ? (
           <div style={{ color: "#FFF176" }}>
             You have already voted for <strong>{role}</strong>.<br />
             Please wait for the next election.
           </div>
         ) : (
-          // If no candidates exist or no role is set, show relevant message
           role && candidates.length > 0 ? (
             <form onSubmit={handleVoteSubmit}>
               {candidates.map((c) => (
@@ -209,28 +176,17 @@ export default function VotingDashboard() {
                   {c}
                 </label>
               ))}
-              <button
-                type="submit"
-                className="w-full p-2 rounded font-bold mt-4"
-                style={{ backgroundColor: "#996633", color: "#FFD700" }}
-              >
+              <button type="submit" className="w-full p-2 rounded font-bold mt-4" style={{ backgroundColor: "#996633", color: "#FFD700" }}>
                 Submit Vote
               </button>
             </form>
           ) : (
             <p style={{ color: "#FFF176" }}>
-              {role
-                ? "No candidates available."
-                : "No role is set for voting yet."}
+              {role ? "No candidates available." : "No role is set for voting yet."}
             </p>
           )
         )}
-
-        {/* Logout button */}
-        <button
-          onClick={handleLogout}
-          className="mt-6 bg-red-500 text-white p-2 rounded w-full"
-        >
+        <button onClick={handleLogout} className="mt-6 bg-red-500 text-white p-2 rounded w-full">
           Logout
         </button>
       </div>

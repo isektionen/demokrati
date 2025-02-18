@@ -1,24 +1,38 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+// import path from "path";
+// import { promises as fs } from "fs";
 
-// Use your actual project’s URL and ANON key
-const SUPABASE_URL = "https://qegwcetrhbaaplkaeppd.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlZ3djZXRyaGJhYXBsa2FlcHBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg3ODY4MTYsImV4cCI6MjA1NDM2MjgxNn0.M7CZVaull1RQgKSSAduoY5ZAuR7000L2PUB6Go8a-us";
+// Initialize Supabase client specific for this API
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// We’ll handle POST requests to /api/check-email
+// POST handler to verify if an email exists in the "emails" table
 export async function POST(request: Request) {
   try {
-    // 1) Parse the incoming JSON { email: string }
-    const { email } = await request.json();
+    // Parse incoming JSON with email and pincode properties
+    const { email, pincode } = await request.json();
+    // Trim possible whitespace and convert to lower-case
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPincode = pincode.trim();
+    // Combine email and pincode with ";" as the separator
+    const combined = `${trimmedEmail};${trimmedPincode}`;
 
-    // 2) Query the "emails" table to see if that row exists
+    // Temporary debug query to print all emails from supabase (for development only)
+    if (process.env.USE_FILE_DEBUG == "true") {
+      const { data: allData } = await supabase
+         .from("emails")
+         .select("*");
+      console.log("Debug - All emails in table:", allData);
+    }
+
+    // Use exact matching instead of ilike for testing:
     const { data, error } = await supabase
       .from("emails")
       .select("*")
-      .eq("email", email);
+      .eq("email", combined);
 
-    // 3) Handle potential errors from Supabase
     if (error) {
       console.error("Supabase error:", error);
       return NextResponse.json(
@@ -27,13 +41,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4) If data length > 0, the email is found
+    // If a matching record exists, set a secure "userEmail" cookie
     if (data && data.length > 0) {
-      return NextResponse.json({ valid: true }, { status: 200 });
+      console.log("User authenticated:", trimmedEmail);
+      const response = NextResponse.json({ valid: true }, { status: 200 });
+      response.cookies.set("userEmail", trimmedEmail, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+      });
+      return response;
     } else {
-      // Not found in the emails table
+      console.warn("No matching record found for:", combined);
       return NextResponse.json(
-        { valid: false, error: "Email not found in the list." },
+        { valid: false, error: "Invalid email or pincode." },
         { status: 404 }
       );
     }
