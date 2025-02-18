@@ -1,56 +1,61 @@
 import { NextResponse } from "next/server";
-import { adminSessionVersion } from "../../../../lib/adminSession"; // import global session version
+import { createClient } from "@supabase/supabase-js";
 
-// POST handler to verify admin credentials and set the "isAdmin" cookie
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+// POST handler to verify admin credentials
 export async function POST(request: Request) {
   try {
-    // Parse the incoming JSON with admin credentials
     const { adminName, adminPassword } = await request.json();
-    // Log the incoming credentials for debugging (remove in production)
-    console.log("\n————— Login attempt:", adminName, " —————\n");
+    console.log("\n🔹 Login attempt for:", adminName);
 
-    // Parse admin credentials from env variable (if missing, fallback to single credential)
-    let isAuthenticated = false;
-    let privileges = "";
-    if (process.env.ADMIN_CREDENTIALS) {
-      const creds = JSON.parse(process.env.ADMIN_CREDENTIALS);
-      for (const cred of creds as Array<{ adminName: string; adminPassword: string; privileges?: string }>) {
-        if (cred.adminName === adminName && cred.adminPassword === adminPassword) {
-          isAuthenticated = true;
-          privileges = cred.privileges || "";
-          break;
-        }
-      }
-    }
-    console.log("\n————— Authenticated:", isAuthenticated, "Privileges:", privileges, " —————\n");
+    // Fetch admin credentials from Supabase
+    const { data: admin, error } = await supabase
+      .from("admins")
+      .select("username, password, privileges")
+      .eq("username", adminName)
+      .single();
 
-    if (isAuthenticated) {
-      const response = NextResponse.json({ success: true, privileges }, { status: 200 });
-      response.cookies.set("isAdmin", `true-${Number(adminSessionVersion)}`, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-      });
-      // Optionally, set an extra cookie for admin privileges
-      if (privileges) {
-        response.cookies.set("adminPrivileges", privileges, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          path: "/",
-        });
-      }
-      return response;
-    } else {
-      return NextResponse.json(
-        { success: false, message: "Invalid admin credentials" },
-        { status: 401 }
-      );
+    if (error) {
+      console.error("\n❌ Supabase Error:", error.message);
+      return NextResponse.json({ success: false, message: "Database error" }, { status: 500 });
     }
+
+    if (!admin) {
+      console.log("\n❌ No matching admin found in Supabase");
+      return NextResponse.json({ success: false, message: "Invalid admin credentials" }, { status: 401 });
+    }
+
+    console.log("\n✅ Admin found in Supabase:", admin);
+
+    // Compare plain text password (⚠️ Security Risk: Will be replaced with hashing later)
+    if (adminPassword !== admin.password) {
+      console.log("\n❌ Incorrect password");
+      return NextResponse.json({ success: false, message: "Invalid admin credentials" }, { status: 401 });
+    }
+
+    console.log("\n✅ Password matched! Logging in admin...");
+
+    // Set authentication cookies
+    const response = NextResponse.json({ success: true, privileges: admin.privileges }, { status: 200 });
+    response.cookies.set("isAdmin", "true", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    });
+    response.cookies.set("adminPrivileges", admin.privileges, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    });
+
+    return response;
   } catch (error) {
-    console.error("Error processing admin login:", error);
-    return NextResponse.json(
-      { success: false, message: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("❌ Error processing admin login:", error);
+    return NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 });
   }
 }
