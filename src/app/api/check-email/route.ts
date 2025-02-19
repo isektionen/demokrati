@@ -10,14 +10,6 @@ export async function POST(request: Request) {
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPincode = pincode.trim();
 
-    // Temporary debug query to print all emails from supabase (for development only)
-    if (process.env.USE_FILE_DEBUG == "true") {
-      const { data: allData } = await supabase
-         .from("emails")
-         .select("*");
-      console.log("Debug - All emails in table:", allData);
-    }
-
     // Query Supabase for a record with matching email and password
     const { data, error } = await supabase
       .from("emails")
