@@ -14,9 +14,11 @@ export default function VotingDashboard() {
   const [candidates, setCandidates] = useState<string[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState("");
   const [hasVoted, setHasVoted] = useState(false);
+  
   // Loading and error states improve user experience
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  
 
   // 1. Check if user is logged in via secure cookie (using /api/verify-user)
   useEffect(() => {
@@ -32,7 +34,27 @@ export default function VotingDashboard() {
     checkUser();
   }, [router]);
 
-  // 2. Fetch election data and candidate list once.
+  // 2. Periodically check if the user's session is still valid
+  useEffect(() => {
+    if (email) {
+      const intervalId = setInterval(() => {
+        (async () => {
+          const { data, error } = await supabase
+            .from("emails")
+            .select("*")
+            .eq("email", email);
+          if (error || !data || data.length === 0) {
+            alert("Session expired. Please sign in again.");
+            router.push("/");
+          }
+        })();
+      }, 60000); // check every 60 seconds
+
+      return () => clearInterval(intervalId);
+    }
+  }, [email, router]);
+
+  // 3. Fetch election data and candidate list once.
   useEffect(() => {
     const fetchElectionAndCandidates = async () => {
       try {
@@ -67,7 +89,7 @@ export default function VotingDashboard() {
     fetchElectionAndCandidates();
   }, []); // run once on mount
 
-  // 3. Check if the user has already voted when role and email are set.
+  // 4. Check if the user has already voted when role and email are set.
   useEffect(() => {
     const checkUserVote = async () => {
       if (role && email) {
@@ -138,7 +160,7 @@ export default function VotingDashboard() {
     router.push("/");
   };
 
-  // Memoize the candidate list input rendering to avoid re-computations on re-renders
+  // Memorize the candidate list input rendering to avoid re-computations on re-renders
   const candidateRadioButtons = useMemo(() => {
     return candidates.map((c) => (
       <label key={c} className="block mb-2" style={{ color: "#FFF176" }}>

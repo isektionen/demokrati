@@ -61,6 +61,21 @@ export default function AdminDashPage() {
     checkAdmin();
   }, [router]);
 
+  // Periodically check admin authorization
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+      const res = await fetch("/api/verify-admin");
+      const data = await res.json();
+      if (!res.ok || !data.isAdmin) {
+        alert("Session expired. Please sign in again.");
+        router.push("/admin");
+      }
+    }, 120000); // check every two minutes
+
+    return () => clearInterval(intervalId);
+  }, [router]);
+
+
   // State variables for election role, candidate name, list of candidates, and voting results.
   const [role, setRole] = useState("");
   const [candidateName, setCandidateName] = useState("");
