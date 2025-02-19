@@ -1,12 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-// import path from "path";
-// import { promises as fs } from "fs";
-
-// Initialize Supabase client specific for this API
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+import { supabase } from "../../../../lib/supabaseClient";
 
 // POST handler to verify if an email exists in the "emails" table
 export async function POST(request: Request) {

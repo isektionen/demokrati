@@ -2,20 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-
-/**
- * Supabase client initialization for admin-side operations.
- * Uses environment variables for the Supabase URL and anon key.
- */
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error("Supabase URL and Anon Key are missing from environment variables");
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+import { supabase } from "../../../lib/supabaseClient";
 
 
 /**
@@ -80,17 +67,29 @@ export default function AdminDashPage() {
   const [candidates, setCandidates] = useState<string[]>([]);
   const [results, setResults] = useState<{ [candidate: string]: number }>({});
 
-  // New state for detailed votes modal
+  // State variables for detailed votes modal
   const [showVotesModal, setShowVotesModal] = useState(false);
   const [detailedVotes, setDetailedVotes] = useState<Array<{ candidate: string; role: string; firstname: string; lastname: string }>>([]);
   
-  // New state for attendance modal
+  // State variables for attendance modal
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [attendanceList, setAttendanceList] = useState<{ firstname: string; lastname: string; time: string }[]>([]);
 
-  // New state for confirmation modals
+  // State variables for confirmation modals
   const [showResetAttendanceConfirm, setShowResetAttendanceConfirm] = useState(false);
   const [showResetVotesConfirm, setShowResetVotesConfirm] = useState(false);
+
+  // State variables for attendance add and remove popups:
+  const [showRemoveAttendancePopup, setShowRemoveAttendancePopup] = useState(false);
+  const [removeAttendanceList, setRemoveAttendanceList] = useState<Array<{ email: string; firstname: string; lastname: string; time: string }>>([]);
+  const [showAddAttendancePopup, setShowAddAttendancePopup] = useState(false);
+  const [newAttendanceEmail, setNewAttendanceEmail] = useState("");
+  const [newAttendancePassword, setNewAttendancePassword] = useState("");
+  const [newAttendanceFirstname, setNewAttendanceFirstname] = useState("");
+  const [newAttendanceLastname, setNewAttendanceLastname] = useState("");
+
+  // State variables for showing voting results modal
+  const [showVotingResultsPopup, setShowVotingResultsPopup] = useState(false);
 
   /**
    * On mount, load the election role and candidates from Supabase.
@@ -259,6 +258,7 @@ export default function AdminDashPage() {
       tally[cand] = (tally[cand] || 0) + 1;
     }
     setResults(tally);
+    setShowVotingResultsPopup(true); // Open modal popup
   };
 
   /**
@@ -304,7 +304,9 @@ export default function AdminDashPage() {
     setShowVotesModal(true);
   };
 
-  // New: Handle showing attendance list.
+  /**
+ * Handle showing attendance list.
+ */
   const handleShowAttendance = async () => {
     const { data, error } = await supabase.from("emails").select("firstname, lastname, time");
     if (error) {
@@ -349,6 +351,83 @@ export default function AdminDashPage() {
     router.push("/admin");
   };
 
+  /**
+   * Open remove attendance popup and fetch attendance list.
+   */
+  const handleOpenRemoveAttendancePopup = async () => {
+    const { data, error } = await supabase.from("emails").select("email, firstname, lastname, time");
+    if (error) {
+      showAlert("Error", "Error fetching attendance: " + error.message);
+      return;
+    }
+    setRemoveAttendanceList(data);
+    setShowRemoveAttendancePopup(true);
+  };
+  
+  /**
+   * Remove an individual attendance entry
+   */
+  const handleRemoveAttendanceRow = async (email: string) => {
+    const { error } = await supabase.from("emails").delete().eq("email", email);
+    if (error) {
+      showAlert("Error", "Error removing attendance: " + error.message);
+      return;
+    }
+    setRemoveAttendanceList(prev => prev.filter(item => item.email !== email));
+    showAlert("Success", `Removed attendance for ${email}.`);
+  };
+  
+  /**
+   * Open add attendance popup
+   */
+  const handleOpenAddAttendancePopup = () => {
+    setNewAttendanceEmail("");
+    setNewAttendancePassword("");
+    setNewAttendanceFirstname("");
+    setNewAttendanceLastname("");
+    setShowAddAttendancePopup(true);
+  };
+  
+  /**
+   * Add a new attendance entry with input validations.
+   */
+  const handleAddAttendanceRow = async () => {
+    // Validate that password contains only numbers and is no more than 3 digits.
+    if (!/^[0-9]{1,3}$/.test(newAttendancePassword)) {
+      showAlert("Notice", "Pincode must be 3 digits, and only numbers.");
+      return;
+    }
+    // Validate that email contains only letters (no numbers or special characters) and is at most 10 chars.
+    if (!/^[A-Za-z]{1,10}$/.test(newAttendanceEmail)) {
+      showAlert("Notice", "Only enter the KTH-username, withouth @kth.se, max 10 letters without numbers or special characters.");
+      return;
+    }
+    if (!newAttendanceFirstname || !newAttendanceLastname) {
+      showAlert("Notice", "Please enter all fields.");
+      return;
+    }
+    const { error } = await supabase.from("emails").insert({
+      email: newAttendanceEmail,
+      password: newAttendancePassword,
+      firstname: newAttendanceFirstname,
+      lastname: newAttendanceLastname,
+      time: new Date().toISOString()
+    });
+    if (error) {
+      if (error.message.includes("duplicate key value violates unique constraint")) {
+        showAlert("Error", `${newAttendanceEmail} already checked in`);
+      } else {
+        showAlert("Error", "Error adding attendance: " + error.message);
+      }
+      return;
+    }
+    showAlert("Success", `Added attendance for ${newAttendanceEmail}.`);
+    setShowAddAttendancePopup(false);
+  };
+
+  // Compute total votes each render.
+  const totalVotes = Object.values(results).reduce((sum, count) => sum + count, 0);
+
   // Render the admin dashboard UI
   return (
     <>
@@ -386,7 +465,7 @@ export default function AdminDashPage() {
               )}
             </div>
             {/* Voting Results Section */}
-            <div className="rounded p-4 space-y-4" style={{ backgroundColor: "#2b2b2b" }}>
+            <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
               <h3 className="text-xl font-semibold" style={{ color: "#FFD700" }}>
                 Voting Results
               </h3>
@@ -397,19 +476,6 @@ export default function AdminDashPage() {
               >
                 Show Voting Results
               </button>
-              {Object.keys(results).length > 0 ? (
-                <ul>
-                  {Object.entries(results).map(([candidate, count]) => (
-                    <li key={candidate} style={{ color: "#FFF176" }}>
-                      {candidate}: {count} vote{count > 1 ? "s" : ""}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="italic" style={{ color: "#FFF176" }}>
-                  No results to display.
-                </p>
-              )}
             </div>
             {/* Logout Section */}
             <button
@@ -451,7 +517,7 @@ export default function AdminDashPage() {
             {canModify && (
               <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
                 <h2 className="text-2xl font-semibold mb-4" style={{ color: "#FFD700" }}>
-                  Current Candidates
+                  Add Candidates
                 </h2>
                 <div className="flex space-x-2">
                   <input
@@ -501,18 +567,18 @@ export default function AdminDashPage() {
             )}
   
             {/* Voting results section */}
-            <div className="rounded p-4 space-y-4" style={{ backgroundColor: "#2b2b2b" }}>
-              <h3 className="text-xl font-semibold" style={{ color: "#FFD700" }}>
-                Voting Results
-              </h3>
-              <button
-                onClick={handleShowResults}
-                className="w-full py-2 rounded font-medium mb-2"
-                style={{ backgroundColor: "#996633", color: "#FFD700" }}
-              >
-                Show Voting Results
-              </button>
-              {privileges === "all" && (
+            {privileges === "all" && (
+              <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
+                <h3 className="text-xl font-semibold" style={{ color: "#FFD700" }}>
+                  Voting Results
+                </h3>
+                <button
+                  onClick={handleShowResults}
+                  className="w-full py-2 rounded font-medium mb-2"
+                  style={{ backgroundColor: "#996633", color: "#FFD700" }}
+                >
+                  Show Voting Results
+                </button>
                 <button
                   onClick={handleShowDetailedVotes}
                   className="w-full py-2 rounded font-medium mb-2"
@@ -520,8 +586,6 @@ export default function AdminDashPage() {
                 >
                   Show Detailed Votes
                 </button>
-              )}
-              {privileges === "all" && (
                 <button
                   onClick={() => setShowResetVotesConfirm(true)}
                   className="w-full py-2 rounded font-medium mb-2"
@@ -529,21 +593,21 @@ export default function AdminDashPage() {
                 >
                   Reset Voting Results
                 </button>
-              )}
-              {Object.keys(results).length > 0 ? (
-                <ul>
-                  {Object.entries(results).map(([candidate, count]) => (
-                    <li key={candidate} style={{ color: "#FFF176" }}>
-                      {candidate}: {count} vote{count > 1 ? "s" : ""}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="italic" style={{ color: "#FFF176" }}>
-                  No results to display.
-                </p>
-              )}
-            </div>
+                {/* Optionally display the inline results */}
+                {Object.keys(results).length > 0 ? (
+                  <ul>
+                    {Object.entries(results).map(([candidate, count]) => (
+                      <li key={candidate} style={{ color: "#FFF176" }}>
+                        {candidate}: {count} vote{count > 1 ? "s" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="italic" style={{ color: "#FFF176" }}>
+                  </p>
+                )}
+              </div>
+            )}
   
             {/* Attendance management section */}
             {canModify && (
@@ -578,6 +642,25 @@ export default function AdminDashPage() {
                     </button>
                   )}
                 </div>
+                {/* New buttons for individual attendance management */}
+                {(privileges === "all" || privileges === "valberedning") && (
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={handleOpenRemoveAttendancePopup}
+                      className="flex-1 px-4 py-2 rounded font-medium"
+                      style={{ backgroundColor: "#E64A19", color: "#FFF" }}
+                    >
+                      Remove Person from Attendance
+                    </button>
+                    <button
+                      onClick={handleOpenAddAttendancePopup}
+                      className="flex-1 px-4 py-2 rounded font-medium"
+                      style={{ backgroundColor: "#388E3C", color: "#FFF" }}
+                    >
+                      Add Person to Attendance
+                    </button>
+                  </div>
+                )}
               </div>
             )}
   
@@ -707,6 +790,124 @@ export default function AdminDashPage() {
                     Cancel
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Popup for Removing Attendance */}
+          {showRemoveAttendancePopup && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-semibold">Remove Person from Attendance</h3>
+                  <button
+                    onClick={() => setShowRemoveAttendancePopup(false)}
+                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Close
+                  </button>
+                </div>
+                <ul>
+                  {removeAttendanceList.map((item, index) => (
+                    <li key={index} className="flex justify-between items-center mb-2">
+                      <span>{item.firstname} {item.lastname} ({item.email})</span>
+                      <button
+                        onClick={() => handleRemoveAttendanceRow(item.email)}
+                        style={{ backgroundColor: "#F44336", color: "#FFF", padding: "0.3rem 0.6rem", borderRadius: "0.25rem" }}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Popup for Adding Attendance */}
+          {showAddAttendancePopup && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div className="bg-white p-4 rounded w-3/4">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-semibold">Add Person to Attendance</h3>
+                  <button
+                    onClick={() => setShowAddAttendancePopup(false)}
+                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={newAttendanceEmail}
+                    onChange={(e) => setNewAttendanceEmail(e.target.value)}
+                    className="w-full p-2 rounded border"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Password"
+                    value={newAttendancePassword}
+                    onChange={(e) => setNewAttendancePassword(e.target.value)}
+                    className="w-full p-2 rounded border"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Firstname"
+                    value={newAttendanceFirstname}
+                    onChange={(e) => setNewAttendanceFirstname(e.target.value)}
+                    className="w-full p-2 rounded border"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Lastname"
+                    value={newAttendanceLastname}
+                    onChange={(e) => setNewAttendanceLastname(e.target.value)}
+                    className="w-full p-2 rounded border"
+                  />
+                  <button
+                    onClick={handleAddAttendanceRow}
+                    className="w-full py-2 rounded font-medium"
+                    style={{ backgroundColor: "#388E3C", color: "#FFF" }}
+                  >
+                    Add Person
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal for Voting Results */}
+          {showVotingResultsPopup && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-semibold">Voting Results</h3>
+                  <button
+                    onClick={() => setShowVotingResultsPopup(false)}
+                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                  >
+                    Close
+                  </button>
+                </div>
+                {Object.keys(results).length > 0 ? (
+                  <ul>
+                    {Object.entries(results).map(([candidate, count]) => {
+                      const percentage =
+                        totalVotes > 0 ? ((count / totalVotes) * 100).toFixed(1) : "0";
+                      return (
+                        <li key={candidate} style={{ color: "#000" }}>
+                          {candidate}: {count} vote{count > 1 ? "s" : ""} ({percentage}%)
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="italic" style={{ color: "#FFF176" }}>
+                    No results to display.
+                  </p>
+                )}
               </div>
             </div>
           )}
