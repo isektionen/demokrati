@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
-
 /**
  * AdminDashPage component:
  * - Verifies admin privileges.
@@ -84,11 +83,15 @@ export default function AdminDashPage() {
 
   // State variables for detailed votes modal
   const [showVotesModal, setShowVotesModal] = useState(false);
-  const [detailedVotes, setDetailedVotes] = useState<Array<{ candidate: string; role: string; firstname: string; lastname: string }>>([]);
+  const [detailedVotes, setDetailedVotes] = useState<
+    Array<{ candidate: string; role: string; firstname: string; lastname: string }>
+  >([]);
   
   // State variables for attendance modal
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
-  const [attendanceList, setAttendanceList] = useState<{ firstname: string; lastname: string; time: string }[]>([]);
+  const [attendanceList, setAttendanceList] = useState<
+    { firstname: string; lastname: string; time: string }[]
+  >([]);
 
   // State variables for confirmation modals
   const [showResetAttendanceConfirm, setShowResetAttendanceConfirm] = useState(false);
@@ -96,7 +99,9 @@ export default function AdminDashPage() {
 
   // State variables for attendance add and remove popups:
   const [showRemoveAttendancePopup, setShowRemoveAttendancePopup] = useState(false);
-  const [removeAttendanceList, setRemoveAttendanceList] = useState<Array<{ email: string; firstname: string; lastname: string; time: string }>>([]);
+  const [removeAttendanceList, setRemoveAttendanceList] = useState<
+    Array<{ email: string; firstname: string; lastname: string; time: string }>
+  >([]);
   const [showAddAttendancePopup, setShowAddAttendancePopup] = useState(false);
   const [newAttendanceEmail, setNewAttendanceEmail] = useState("");
   const [newAttendancePassword, setNewAttendancePassword] = useState("");
@@ -313,15 +318,20 @@ export default function AdminDashPage() {
     // Merge vote data with email details (including role)
     const merged = (votesData as VoteRow[]).map((vote: VoteRow) => {
       const name = emailLookup[vote.user_email] || { firstname: "Unknown", lastname: "" };
-      return { candidate: vote.candidate, role: vote.role, firstname: name.firstname, lastname: name.lastname };
+      return {
+        candidate: vote.candidate,
+        role: vote.role,
+        firstname: name.firstname,
+        lastname: name.lastname
+      };
     });
     setDetailedVotes(merged);
     setShowVotesModal(true);
   };
 
   /**
- * Handle showing attendance list.
- */
+   * Handle showing attendance list.
+   */
   const handleShowAttendance = async () => {
     const { data, error } = await supabase.from("emails").select("firstname, lastname, time");
     if (error) {
@@ -388,7 +398,7 @@ export default function AdminDashPage() {
       showAlert("Error", "Error removing attendance: " + error.message);
       return;
     }
-    setRemoveAttendanceList(prev => prev.filter(item => item.email !== email));
+    setRemoveAttendanceList((prev) => prev.filter((item) => item.email !== email));
     showAlert("Success", `Removed attendance for ${email}.`);
   };
   
@@ -414,7 +424,10 @@ export default function AdminDashPage() {
     }
     // Validate that email contains only letters (no numbers or special characters) and is at most 10 chars.
     if (!/^[A-Za-z]{1,10}$/.test(newAttendanceEmail)) {
-      showAlert("Notice", "Only enter the KTH-username, withouth @kth.se, max 10 letters without numbers or special characters.");
+      showAlert(
+        "Notice",
+        "Only enter the KTH-username, without @kth.se, max 10 letters, no numbers or special characters."
+      );
       return;
     }
     if (!newAttendanceFirstname || !newAttendanceLastname) {
@@ -618,8 +631,7 @@ export default function AdminDashPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="italic" style={{ color: "#FFF176" }}>
-                  </p>
+                  <p className="italic" style={{ color: "#FFF176" }}></p>
                 )}
               </div>
             )}
@@ -689,20 +701,25 @@ export default function AdminDashPage() {
             </button>
           </div>
 
-          {/* Modal for Detailed Votes */}
+          {/* Show Detailed Votes modal (white bg, black text) */}
           {showVotesModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-              <div 
-                className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto" 
-                style={{ maxHeight: "80vh" }}
+              <div
+                className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto"
+                style={{ maxHeight: "80vh", color: "#000" }}
               >
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-xl font-semibold">Detailed Votes</h3>
                   <button
                     onClick={() => setShowVotesModal(false)}
-                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    style={{
+                      backgroundColor: "#D32F2F",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
-                    Close y
+                    Close
                   </button>
                 </div>
                 <ul>
@@ -716,20 +733,23 @@ export default function AdminDashPage() {
             </div>
           )}
 
-          {/* New: Modal for Attendance */}
+          {/* Show Attendance modal (white bg, black text) */}
           {showAttendanceModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-              <div 
-                className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto" 
-                style={{ maxHeight: "80vh" }}
+              <div
+                className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto"
+                style={{ maxHeight: "80vh", color: "#000" }}
               >
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-xl font-semibold">
-                    Attendance ({attendanceList.length} total)
-                  </h3>
+                  <h3 className="text-xl font-semibold">Attendance ({attendanceList.length} total)</h3>
                   <button
                     onClick={() => setShowAttendanceModal(false)}
-                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    style={{
+                      backgroundColor: "#D32F2F",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
                     Close
                   </button>
@@ -737,7 +757,8 @@ export default function AdminDashPage() {
                 <ul>
                   {attendanceList.map((entry, index) => (
                     <li key={index}>
-                      {entry.firstname} {entry.lastname} – checked in at {new Date(entry.time).toLocaleString()}
+                      {entry.firstname} {entry.lastname} – checked in at{" "}
+                      {new Date(entry.time).toLocaleString()}
                     </li>
                   ))}
                 </ul>
@@ -745,15 +766,23 @@ export default function AdminDashPage() {
             </div>
           )}
 
-          {/* Confirmation Modal for Reset Attendance */}
+          {/* Reset Attendance confirmation modal (white bg, black text) */}
           {showResetAttendanceConfirm && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-              <div className="bg-white p-4 rounded w-3/4">
+              <div
+                className="bg-white p-4 rounded w-3/4"
+                style={{ color: "#000" }}
+              >
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-xl font-semibold">Confirm Reset Attendance</h3>
                   <button
                     onClick={() => setShowResetAttendanceConfirm(false)}
-                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    style={{
+                      backgroundColor: "#D32F2F",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
                     Cancel
                   </button>
@@ -761,14 +790,27 @@ export default function AdminDashPage() {
                 <p>Are you sure you want to reset the attendance data?</p>
                 <div className="flex gap-2 mt-4">
                   <button
-                    onClick={() => { setShowResetAttendanceConfirm(false); handleResetAttendance(); }}
-                    style={{ backgroundColor: "#F44336", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    onClick={() => {
+                      setShowResetAttendanceConfirm(false);
+                      handleResetAttendance();
+                    }}
+                    style={{
+                      backgroundColor: "#F44336",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
                     Yes, Reset
                   </button>
                   <button
                     onClick={() => setShowResetAttendanceConfirm(false)}
-                    style={{ backgroundColor: "#1976D2", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    style={{
+                      backgroundColor: "#1976D2",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
                     Cancel
                   </button>
@@ -777,15 +819,23 @@ export default function AdminDashPage() {
             </div>
           )}
 
-          {/* Confirmation Modal for Reset Voting Results */}
+          {/* Reset Voting Results confirmation modal (white bg, black text) */}
           {showResetVotesConfirm && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-              <div className="bg-white p-4 rounded w-3/4">
+              <div
+                className="bg-white p-4 rounded w-3/4"
+                style={{ color: "#000" }}
+              >
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-xl font-semibold">Confirm Reset Voting Results</h3>
                   <button
                     onClick={() => setShowResetVotesConfirm(false)}
-                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    style={{
+                      backgroundColor: "#D32F2F",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
                     Cancel
                   </button>
@@ -793,14 +843,27 @@ export default function AdminDashPage() {
                 <p>Are you sure you want to reset all voting data?</p>
                 <div className="flex gap-2 mt-4">
                   <button
-                    onClick={() => { setShowResetVotesConfirm(false); handleResetVotes(); }}
-                    style={{ backgroundColor: "#F44336", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    onClick={() => {
+                      setShowResetVotesConfirm(false);
+                      handleResetVotes();
+                    }}
+                    style={{
+                      backgroundColor: "#F44336",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
                     Yes, Reset
                   </button>
                   <button
                     onClick={() => setShowResetVotesConfirm(false)}
-                    style={{ backgroundColor: "#1976D2", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    style={{
+                      backgroundColor: "#1976D2",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
                     Cancel
                   </button>
@@ -809,15 +872,23 @@ export default function AdminDashPage() {
             </div>
           )}
 
-          {/* Popup for Removing Attendance */}
+          {/* Remove Attendance popup (white bg, black text) */}
           {showRemoveAttendancePopup && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-              <div className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto">
+              <div
+                className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto"
+                style={{ color: "#000" }}
+              >
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-xl font-semibold">Remove Person from Attendance</h3>
                   <button
                     onClick={() => setShowRemoveAttendancePopup(false)}
-                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    style={{
+                      backgroundColor: "#D32F2F",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
                     Close
                   </button>
@@ -825,10 +896,17 @@ export default function AdminDashPage() {
                 <ul>
                   {removeAttendanceList.map((item, index) => (
                     <li key={index} className="flex justify-between items-center mb-2">
-                      <span>{item.firstname} {item.lastname} ({item.email})</span>
+                      <span>
+                        {item.firstname} {item.lastname} ({item.email})
+                      </span>
                       <button
                         onClick={() => handleRemoveAttendanceRow(item.email)}
-                        style={{ backgroundColor: "#F44336", color: "#FFF", padding: "0.3rem 0.6rem", borderRadius: "0.25rem" }}
+                        style={{
+                          backgroundColor: "#F44336",
+                          color: "#FFF",
+                          padding: "0.3rem 0.6rem",
+                          borderRadius: "0.25rem",
+                        }}
                       >
                         Remove
                       </button>
@@ -839,15 +917,23 @@ export default function AdminDashPage() {
             </div>
           )}
 
-          {/* Popup for Adding Attendance */}
+          {/* Add Attendance popup (white bg, black text) */}
           {showAddAttendancePopup && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-              <div className="bg-white p-4 rounded w-3/4">
+              <div
+                className="bg-white p-4 rounded w-3/4"
+                style={{ color: "#000" }}
+              >
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-xl font-semibold">Add Person to Attendance</h3>
                   <button
                     onClick={() => setShowAddAttendancePopup(false)}
-                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                    style={{
+                      backgroundColor: "#D32F2F",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
                   >
                     Close
                   </button>
@@ -940,6 +1026,70 @@ export default function AdminDashPage() {
             ) : (
               <p className="italic" style={{ color: "#FFF176" }}>No results to display.</p>
             )}
+          {/* Show Voting Results popup (white bg, black text) */}
+          {showVotingResultsPopup && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+              <div
+                className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto"
+                style={{ maxHeight: "80vh", color: "#000" }}
+              >
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-xl font-semibold">Voting Results</h3>
+                  <button
+                    onClick={() => setShowVotingResultsPopup(false)}
+                    style={{
+                      backgroundColor: "#D32F2F",
+                      color: "#FFF",
+                      padding: "0.5rem 1rem",
+                      borderRadius: "0.25rem",
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                {Object.keys(results).length > 0 ? (
+                  <ul>
+                    {Object.entries(results).map(([candidate, count]) => {
+                      const percentage =
+                        totalVotes > 0 ? ((count / totalVotes) * 100).toFixed(1) : "0";
+                      return (
+                        <li key={candidate}>
+                          {candidate}: {count} vote{count > 1 ? "s" : ""} ({percentage}%)
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p>No results to display.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {/* Alert Modal (white bg, black text) */}
+      {alertInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div
+            className="bg-white p-4 rounded w-3/4"
+            style={{ color: "#000" }}
+          >
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-xl font-semibold">{alertInfo.title}</h3>
+              <button
+                onClick={() => setAlertInfo(null)}
+                style={{
+                  backgroundColor: "#D32F2F",
+                  color: "#FFF",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "0.25rem",
+                }}
+              >
+                Ok
+              </button>
+            </div>
+            <p>{alertInfo.message}</p>
           </div>
         </div>
       )}
