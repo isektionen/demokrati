@@ -893,40 +893,6 @@ export default function AdminDashPage() {
             </div>
           )}
 
-          {/* Modal for Voting Results */}
-          {showVotingResultsPopup && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-              <div className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-xl font-semibold">Voting Results</h3>
-                  <button
-                    onClick={() => setShowVotingResultsPopup(false)}
-                    style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
-                  >
-                    Close
-                  </button>
-                </div>
-                {Object.keys(results).length > 0 ? (
-                  <ul>
-                    {Object.entries(results).map(([candidate, count]) => {
-                      const percentage =
-                        totalVotes > 0 ? ((count / totalVotes) * 100).toFixed(1) : "0";
-                      return (
-                        <li key={candidate} style={{ color: "#000" }}>
-                          {candidate}: {count} vote{count > 1 ? "s" : ""} ({percentage}%)
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p className="italic" style={{ color: "#FFF176" }}>
-                    No results to display.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
         </div>
       )}
       {/* Alert Modal */}
@@ -943,6 +909,37 @@ export default function AdminDashPage() {
               </button>
             </div>
             <p>{alertInfo.message}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Moved Voting Results Modal (available to all privileges) */}
+      {showVotingResultsPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-xl font-semibold">Voting Results</h3>
+              <button
+                onClick={() => setShowVotingResultsPopup(false)}
+                style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+              >
+                Close
+              </button>
+            </div>
+            {Object.keys(results).length > 0 ? (
+              <ul>
+                {Object.entries(results).map(([candidate, count]) => {
+                  const percentage = totalVotes > 0 ? ((count / totalVotes) * 100).toFixed(1) : "0";
+                  return (
+                    <li key={candidate} style={{ color: "#000" }}>
+                      {candidate}: {count} vote{count > 1 ? "s" : ""} ({percentage}%)
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="italic" style={{ color: "#FFF176" }}>No results to display.</p>
+            )}
           </div>
         </div>
       )}
