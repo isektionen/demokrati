@@ -6,3 +6,10 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Export the client so it can be reused across the project
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Ensure the settings table exists in the database
+const ensureSettingsTableExists = async () => {
+  await supabase.rpc('create_settings_table');
+};
+
+ensureSettingsTableExists();

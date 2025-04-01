@@ -12,8 +12,9 @@ export default function VotingDashboard() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
   const [candidates, setCandidates] = useState<string[]>([]);
-  const [selectedCandidate, setSelectedCandidate] = useState("");
+  const [selectedCandidates, setSelectedCandidates] = useState<string[]>([]);
   const [hasVoted, setHasVoted] = useState(false);
+  const [maxVotes, setMaxVotes] = useState(1); // New state for max votes
   
   // Loading and error states improve user experience
   const [loading, setLoading] = useState(true);
@@ -89,15 +90,30 @@ export default function VotingDashboard() {
     fetchElectionAndCandidates();
   }, []); // run once on mount
 
+  useEffect(() => {
+    const fetchMaxVotes = async () => {
+      const { data, error } = await supabase
+        .from("settings")
+        .select("max_votes")
+        .single();
+      if (error) {
+        console.error("Error fetching max votes:", error);
+      } else if (data) {
+        setMaxVotes(data.max_votes || 1);
+      }
+    };
+    fetchMaxVotes();
+  }, []);
+
   // 4. Check if the user has already voted when role and email are set.
   useEffect(() => {
     const checkUserVote = async () => {
       if (role && email) {
-        const uniqueVote = `${email}_${role}`; // compute unique_vote
         const { data: existingVotes, error: voteErr } = await supabase
           .from("votes")
           .select("*")
-          .eq("unique_vote", uniqueVote);
+          .eq("user_email", email)
+          .eq("role", role);
         if (voteErr) {
           console.error("Error checking votes:", voteErr);
         } else if (existingVotes && existingVotes.length > 0) {
@@ -116,42 +132,35 @@ export default function VotingDashboard() {
       alert("No role is set for voting. Please check with the admin!");
       return;
     }
-    if (!selectedCandidate) {
-      alert("Please select a candidate before submitting your vote.");
-      return;
-    }
-
-    const uniqueVote = `${email}_${role}`; // compute unique_vote
-
-    // Double-check if the user already voted using unique_vote
-    const { data: alreadyVoted, error: checkErr } = await supabase
-      .from("votes")
-      .select("*")
-      .eq("unique_vote", uniqueVote);
-    if (checkErr) {
-      alert("Error checking votes: " + checkErr.message);
-      return;
-    }
-    if (alreadyVoted && alreadyVoted.length > 0) {
+    if (hasVoted) {
       alert("You have already voted for this role!");
+      return;
+    }
+    if (selectedCandidates.length !== maxVotes) {
+      alert(`Please select exactly ${maxVotes} candidates before submitting your vote.`);
+      return;
+    }
+
+    try {
+      const votes = selectedCandidates.map((candidate) => ({
+        user_email: email,
+        role,
+        candidate,
+        unique_vote: `${email}_${role}_${candidate}`,
+      }));
+
+      const { error: insertErr } = await supabase.from("votes").insert(votes);
+      if (insertErr) {
+        alert("Error inserting votes: " + insertErr.message);
+        return;
+      }
+
       setHasVoted(true);
-      return;
+      alert("Your votes have been submitted successfully!");
+    } catch (err) {
+      console.error("Error submitting votes:", err);
+      alert("An error occurred while submitting your votes.");
     }
-
-    // Insert a new vote record along with unique_vote
-    const { error: insertErr } = await supabase.from("votes").insert({
-      user_email: email,
-      role,
-      candidate: selectedCandidate,
-      unique_vote: uniqueVote, // add unique_vote column
-    });
-    if (insertErr) {
-      alert("Error inserting vote: " + insertErr.message);
-      return;
-    }
-
-    setHasVoted(true);
-    alert(`You voted for: ${selectedCandidate}`);
   };
 
   // Logout by calling the logout API and then redirecting to the homepage
@@ -161,21 +170,29 @@ export default function VotingDashboard() {
   };
 
   // Memorize the candidate list input rendering to avoid re-computations on re-renders
-  const candidateRadioButtons = useMemo(() => {
+  const candidateCheckboxes = useMemo(() => {
     return candidates.map((c) => (
       <label key={c} className="block mb-2" style={{ color: "#FFF176" }}>
         <input
-          type="radio"
+          type="checkbox"
           name="candidate"
           value={c}
           className="mr-2"
-          checked={selectedCandidate === c}
-          onChange={() => setSelectedCandidate(c)}
+          checked={selectedCandidates.includes(c)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setSelectedCandidates((prev) =>
+              e.target.checked
+                ? [...prev, value].slice(0, maxVotes) // Limit to maxVotes
+                : prev.filter((v) => v !== value)
+            );
+          }}
+          disabled={!selectedCandidates.includes(c) && selectedCandidates.length >= maxVotes}
         />
         {c}
       </label>
     ));
-  }, [candidates, selectedCandidate]);
+  }, [candidates, selectedCandidates, maxVotes]);
 
   // RENDER: Display the voting form, current role and logout button
   return (
@@ -195,7 +212,7 @@ export default function VotingDashboard() {
             </p>
           ) : (
             <p className="mb-4" style={{ color: "#FFF176" }}>
-              <strong>No role set. Please check with the admin.</strong>
+              <strong>No role is set for voting yet</strong>
             </p>
           )}
           {hasVoted ? (
@@ -205,14 +222,18 @@ export default function VotingDashboard() {
             </div>
           ) : role && candidates.length > 0 ? (
             <form onSubmit={handleVoteSubmit}>
-              {candidateRadioButtons}
-              <button type="submit" className="w-full p-2 rounded font-bold mt-4" style={{ backgroundColor: "#996633", color: "#FFD700" }}>
-                Submit Vote
+              {candidateCheckboxes}
+              <button
+                type="submit"
+                className="w-full p-2 rounded font-bold mt-4"
+                style={{ backgroundColor: "#996633", color: "#FFD700" }}
+              >
+                Submit Votes
               </button>
             </form>
           ) : (
-            <p style={{ color: "#FFF176" }}>
-              {role ? "No candidates available." : "No role is set for voting yet."}
+            <p style={{ color: "#FFF176", font: "bold" }}>
+              {role ? "No candidates available." : "Please be patient, ValleB is cooking 🐳"}
             </p>
           )}
           <button onClick={handleLogout} className="mt-6 bg-red-500 text-white p-2 rounded w-full">

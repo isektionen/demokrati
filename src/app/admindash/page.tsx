@@ -17,6 +17,7 @@ import { supabase } from "../../../lib/supabaseClient";
  * - "results"    => can only view results (cannot modify)
  * - ""           => no privileges
  */
+
 export default function AdminDashPage() {
   const router = useRouter();
 
@@ -110,6 +111,40 @@ export default function AdminDashPage() {
 
   // State variables for showing voting results modal
   const [showVotingResultsPopup, setShowVotingResultsPopup] = useState(false);
+
+  const [maxVotes, setMaxVotes] = useState(1); // New state for max votes
+
+  useEffect(() => {
+    const fetchMaxVotes = async () => {
+      const { data, error } = await supabase
+        .from("settings")
+        .select("max_votes")
+        .single();
+      if (error) {
+        console.error("Error fetching max votes:", error);
+      } else if (data) {
+        setMaxVotes(data.max_votes || 1);
+      }
+    };
+    fetchMaxVotes();
+  }, []);
+  
+  const handleMaxVotesChange = async (value: number) => {
+    if (value > candidates.length) {
+      showAlert("Error", "Maximum votes cannot exceed the number of candidates.");
+      return;
+    }
+
+    setMaxVotes(value);
+    const { error } = await supabase
+      .from("settings")
+      .upsert({ id: 1, max_votes: value }, { onConflict: "id" }); // Ensure only one row exists
+    if (error) {
+      showAlert("Error", "Failed to update max votes: " + error.message);
+    } else {
+      showAlert("Success", `Max votes updated to ${value}.`);
+    }
+  };
 
   /**
    * On mount, load the election role and candidates from Supabase.
@@ -691,6 +726,27 @@ export default function AdminDashPage() {
               </div>
             )}
   
+            {/* Max votes dropdown for "all" and "valberedning" privileges */}
+            {(privileges === "all" || privileges === "valberedning") && (
+              <div className="rounded p-4" style={{ backgroundColor: "#2b2b2b" }}>
+                <h3 className="text-xl font-semibold mb-2" style={{ color: "#FFD700" }}>
+                  Set Maximum Votes Per User
+                </h3>
+                <select
+                  value={maxVotes}
+                  onChange={(e) => handleMaxVotesChange(Number(e.target.value))}
+                  className="w-full p-2 rounded border"
+                  style={{ backgroundColor: "#FFF176", borderColor: "#996633", color: "#000" }}
+                >
+                  {[...Array(10).keys()].map((n) => (
+                    <option key={n + 1} value={n + 1}>
+                      {n + 1}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+  
             {/* Logout button (common for full dashboard) */}
             <button
               onClick={handleLogout}
@@ -706,10 +762,10 @@ export default function AdminDashPage() {
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
               <div
                 className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto"
-                style={{ maxHeight: "80vh", color: "#000" }}
+                style={{ maxHeight: "80vh", color: "#000" }} // Ensure black text
               >
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-xl font-semibold">Detailed Votes</h3>
+                  <h3 className="text-xl font-semibold" style={{ color: "#000" }}>Detailed Votes</h3>
                   <button
                     onClick={() => setShowVotesModal(false)}
                     style={{
@@ -724,7 +780,7 @@ export default function AdminDashPage() {
                 </div>
                 <ul>
                   {detailedVotes.map((vote, index) => (
-                    <li key={index}>
+                    <li key={index} style={{ color: "#000" }}>
                       {vote.firstname} {vote.lastname} voted for {vote.candidate} (<em>{vote.role}</em>)
                     </li>
                   ))}
@@ -738,10 +794,10 @@ export default function AdminDashPage() {
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
               <div
                 className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto"
-                style={{ maxHeight: "80vh", color: "#000" }}
+                style={{ maxHeight: "80vh", color: "#000" }} // Ensure black text
               >
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-xl font-semibold">Attendance ({attendanceList.length} total)</h3>
+                  <h3 className="text-xl font-semibold" style={{ color: "#000" }}>Attendance ({attendanceList.length} total)</h3>
                   <button
                     onClick={() => setShowAttendanceModal(false)}
                     style={{
@@ -756,7 +812,7 @@ export default function AdminDashPage() {
                 </div>
                 <ul>
                   {attendanceList.map((entry, index) => (
-                    <li key={index}>
+                    <li key={index} style={{ color: "#000" }}>
                       {entry.firstname} {entry.lastname} – checked in at{" "}
                       {new Date(entry.time).toLocaleString()}
                     </li>
@@ -771,10 +827,10 @@ export default function AdminDashPage() {
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
               <div
                 className="bg-white p-4 rounded w-3/4"
-                style={{ color: "#000" }}
+                style={{ color: "#000" }} // Ensure black text
               >
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-xl font-semibold">Confirm Reset Attendance</h3>
+                  <h3 className="text-xl font-semibold" style={{ color: "#000" }}>Confirm Reset Attendance</h3>
                   <button
                     onClick={() => setShowResetAttendanceConfirm(false)}
                     style={{
@@ -787,7 +843,7 @@ export default function AdminDashPage() {
                     Cancel
                   </button>
                 </div>
-                <p>Are you sure you want to reset the attendance data?</p>
+                <p style={{ color: "#000" }}>Are you sure you want to reset the attendance data?</p>
                 <div className="flex gap-2 mt-4">
                   <button
                     onClick={() => {
@@ -824,10 +880,10 @@ export default function AdminDashPage() {
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
               <div
                 className="bg-white p-4 rounded w-3/4"
-                style={{ color: "#000" }}
+                style={{ color: "#000" }} // Ensure black text
               >
                 <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-xl font-semibold">Confirm Reset Voting Results</h3>
+                  <h3 className="text-xl font-semibold" style={{ color: "#000" }}>Confirm Reset Voting Results</h3>
                   <button
                     onClick={() => setShowResetVotesConfirm(false)}
                     style={{
@@ -840,7 +896,7 @@ export default function AdminDashPage() {
                     Cancel
                   </button>
                 </div>
-                <p>Are you sure you want to reset all voting data?</p>
+                <p style={{ color: "#000" }}>Are you sure you want to reset all voting data?</p>
                 <div className="flex gap-2 mt-4">
                   <button
                     onClick={() => {
@@ -984,17 +1040,22 @@ export default function AdminDashPage() {
       {/* Alert Modal */}
       {alertInfo && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-4 rounded w-3/4">
+          <div className="bg-white p-4 rounded w-3/4" style={{ color: "#000" }}> {/* Ensure black text */}
             <div className="flex justify-between items-center mb-2">
-              <h3 className="text-xl font-semibold">{alertInfo.title}</h3>
+              <h3 className="text-xl font-semibold" style={{ color: "#000" }}>{alertInfo.title}</h3>
               <button
                 onClick={() => setAlertInfo(null)}
-                style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                style={{
+                  backgroundColor: "#D32F2F",
+                  color: "#FFF",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "0.25rem",
+                }}
               >
                 Ok
               </button>
             </div>
-            <p>{alertInfo.message}</p>
+            <p style={{ color: "#000" }}>{alertInfo.message}</p>
           </div>
         </div>
       )}
@@ -1002,12 +1063,17 @@ export default function AdminDashPage() {
       {/* Moved Voting Results Modal (available to all privileges) */}
       {showVotingResultsPopup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto">
+          <div className="bg-white p-4 rounded w-3/4 max-h-[80vh] overflow-y-auto" style={{ color: "#000" }}> {/* Ensure black text */}
             <div className="flex justify-between items-center mb-2">
-              <h3 className="text-xl font-semibold">Voting Results</h3>
+              <h3 className="text-xl font-semibold" style={{ color: "#000" }}>Voting Results</h3>
               <button
                 onClick={() => setShowVotingResultsPopup(false)}
-                style={{ backgroundColor: "#D32F2F", color: "#FFF", padding: "0.5rem 1rem", borderRadius: "0.25rem" }}
+                style={{
+                  backgroundColor: "#D32F2F",
+                  color: "#FFF",
+                  padding: "0.5rem 1rem",
+                  borderRadius: "0.25rem",
+                }}
               >
                 Close
               </button>
@@ -1024,7 +1090,7 @@ export default function AdminDashPage() {
                 })}
               </ul>
             ) : (
-              <p className="italic" style={{ color: "#FFF176" }}>No results to display.</p>
+              <p className="italic" style={{ color: "#000" }}>No results to display.</p>
             )}
           </div>
         </div>
