@@ -25,11 +25,26 @@ export async function POST(request: Request) {
       );
     }
 
-    // If a matching record exists, set a secure "userEmail" cookie
+    // If a matching record exists, set a secure "sessionToken" cookie
     if (data && data.length > 0) {
       console.log("User authenticated:", trimmedEmail);
+      const sessionToken = crypto.randomUUID();
+
+      const { error: updateError } = await supabase
+        .from("emails")
+        .update({ session_token: sessionToken })
+        .eq("email", trimmedEmail);
+
+      if (updateError) {
+        console.error("Supabase error during session token update:", updateError);
+        return NextResponse.json(
+          { valid: false, error: "Failed to create session." },
+          { status: 500 }
+        );
+      }
+
       const response = NextResponse.json({ valid: true }, { status: 200 });
-      response.cookies.set("userEmail", trimmedEmail, {
+      response.cookies.set("sessionToken", sessionToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         path: "/",
