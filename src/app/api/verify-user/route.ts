@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ valid: true, email: data.email });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ valid: false }, { status: 500 });
   }
 }
